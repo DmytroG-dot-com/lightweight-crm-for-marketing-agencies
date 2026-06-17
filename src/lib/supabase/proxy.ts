@@ -21,6 +21,8 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  // getClaims verifies against cached public signing keys when available,
+  // avoiding an Auth-server round trip on every navigation.
+  await supabase.auth.getClaims();
   return response;
 }

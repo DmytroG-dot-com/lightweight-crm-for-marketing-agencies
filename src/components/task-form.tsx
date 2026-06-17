@@ -36,7 +36,7 @@ export function TaskForm({
   const action = defaults ? updateTask : createTask;
   const defaultListId = defaults?.task_list_id ?? preferredListId ?? lists.find((list) => list.kind === "general")?.id ?? lists[0]?.id;
   return (
-    <form action={action} className="grid gap-4 rounded-xl border bg-white p-5 lg:grid-cols-4">
+    <form action={action} className="grid gap-x-5 gap-y-6 border-y bg-white py-6 lg:grid-cols-4">
       <input type="hidden" name="client_id" value={clientId} />
       {defaults && <input type="hidden" name="task_id" value={defaults.id} />}
       <label className="text-sm font-medium lg:col-span-2">
@@ -98,7 +98,7 @@ export function TaskForm({
         </select>
       </label>
       <div className="flex items-end lg:col-span-4">
-        <button className="rounded-lg bg-zinc-950 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800">
+        <button className="ui-action ui-action-primary">
           {defaults ? "Save task" : "Create task"}
         </button>
       </div>

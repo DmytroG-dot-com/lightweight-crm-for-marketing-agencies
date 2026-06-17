@@ -1,5 +1,5 @@
-import { submitOnboarding } from "@/actions/public";
-import { DOSSIER_LABELS, DOSSIER_SECTIONS } from "@/lib/constants";
+import { OnboardingForm } from "@/components/onboarding-form";
+import type { OnboardingDraft } from "@/lib/onboarding";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function OnboardingPage({
@@ -14,7 +14,7 @@ export default async function OnboardingPage({
   const admin = createAdminClient();
   const { data: link } = await admin
     .from("onboarding_links")
-    .select("id, active, expires_at, clients(name)")
+    .select("id, active, expires_at, draft, clients(name)")
     .eq("token", token)
     .eq("active", true)
     .maybeSingle();
@@ -29,18 +29,19 @@ export default async function OnboardingPage({
   const client = link.clients as unknown as { name: string } | null;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
-      <div className="mb-8">
-        <p className="text-sm font-medium text-zinc-500">Client onboarding</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">{client?.name}</h1>
-        <p className="mt-2 text-sm leading-6 text-zinc-500">Share the context the team needs to understand your business and create effective work.</p>
+    <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
+      <div className="mb-10 border-b border-zinc-950 pb-7">
+        <p className="ui-kicker text-blue-700">Client onboarding</p>
+        <h1 className="mt-2 text-3xl font-medium tracking-[-0.04em] sm:text-4xl">{client?.name}</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-500">
+          Share what you already know. Detailed answers help the team create stronger strategy, briefs, and creative work, but you can leave non-required questions blank.
+        </p>
       </div>
-      <form action={submitOnboarding} className="space-y-4">
-        <input type="hidden" name="token" value={token} />
-        {DOSSIER_SECTIONS.map((section) => <label key={section} className="block rounded-xl border bg-white p-5 text-sm font-semibold">{DOSSIER_LABELS[section]}<textarea name={section} rows={5} className="mt-2 w-full rounded-lg border px-3 py-2 text-sm font-normal" /></label>)}
-        <label className="block rounded-xl border bg-white p-5 text-sm font-semibold">Additional knowledge base<textarea name="knowledge_base" rows={7} className="mt-2 w-full rounded-lg border px-3 py-2 text-sm font-normal" /></label>
-        <button className="rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-medium text-white">Submit onboarding</button>
-      </form>
+      <OnboardingForm
+        token={token}
+        companyName={client?.name ?? ""}
+        serverDraft={(link.draft ?? {}) as OnboardingDraft}
+      />
     </main>
   );
 }

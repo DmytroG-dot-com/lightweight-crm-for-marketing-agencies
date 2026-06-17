@@ -1,6 +1,6 @@
 export const TASK_STATUSES = ["todo", "in_progress", "review", "blocked", "complete"] as const;
 export const TASK_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
-export const CREATIVE_STATUSES = ["draft", "ready", "in_progress", "review", "launched", "stopped"] as const;
+export const CREATIVE_STATUSES = ["draft", "in_progress", "review", "approved", "launched", "stopped"] as const;
 
 export const DOSSIER_SECTIONS = [
   "business_basics",

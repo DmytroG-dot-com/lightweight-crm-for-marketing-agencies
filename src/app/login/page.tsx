@@ -1,4 +1,3 @@
-import { Mail } from "lucide-react";
 import { redirect } from "next/navigation";
 import { sendMagicLink } from "@/actions/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -16,13 +15,16 @@ export default async function LoginPage({
   const params = await searchParams;
 
   return (
-    <main className="grid min-h-screen place-items-center px-4">
-      <div className="w-full max-w-sm rounded-2xl border bg-white p-7 shadow-sm">
-        <div className="mb-6 grid size-11 place-items-center rounded-xl bg-zinc-950 text-white">
-          <Mail className="size-5" />
+    <main className="min-h-screen px-6 py-10 md:px-12 md:py-12">
+      <div className="flex min-h-[calc(100vh-6rem)] max-w-xl flex-col justify-between">
+        <div>
+          <p className="text-base uppercase leading-tight tracking-[-0.04em]">Agency Desk</p>
+          <p className="ui-kicker mt-1">Agency CRM / Project Management</p>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Sign up or sign in</h1>
-        <p className="mt-2 text-sm leading-6 text-zinc-500">
+        <div className="border-t border-zinc-950 pt-5">
+        <p className="ui-kicker mb-3">Account access</p>
+        <h1 className="text-4xl font-normal uppercase leading-none tracking-[-0.055em]">Sign up or sign in</h1>
+        <p className="mt-4 max-w-md text-sm leading-6 text-zinc-500">
           Enter your email. New users get an agency automatically; invited teammates join their agency.
         </p>
         {params.sent && (
@@ -33,7 +35,7 @@ export default async function LoginPage({
         {params.error && (
           <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{params.error}</p>
         )}
-        <form action={sendMagicLink} className="mt-6 space-y-4">
+        <form action={sendMagicLink} className="mt-8 space-y-5">
           <label className="block text-sm font-medium">
             Email
             <input
@@ -45,10 +47,11 @@ export default async function LoginPage({
               placeholder="you@agency.com"
             />
           </label>
-          <button className="w-full rounded-lg bg-zinc-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800">
+          <button className="ui-action ui-action-primary w-full">
             Send magic link
           </button>
         </form>
+        </div>
       </div>
     </main>
   );

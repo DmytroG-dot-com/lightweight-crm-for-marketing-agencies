@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 export type AgencyContext = {
@@ -11,24 +12,31 @@ export type AgencyContext = {
     role: "owner" | "admin" | "member";
     display_name: string | null;
     email: string | null;
+    timezone: string;
+    timezone_auto: boolean;
   };
 };
 
-export async function requireUser() {
+export const requireUser = cache(async function requireUser() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getClaims();
+  const claims = data?.claims;
 
-  if (!user) redirect("/login");
-  return { supabase, user };
-}
+  if (error || !claims?.sub) redirect("/login");
+  return {
+    supabase,
+    user: {
+      id: claims.sub,
+      email: typeof claims.email === "string" ? claims.email : undefined,
+    },
+  };
+});
 
-export async function requireAgency(): Promise<AgencyContext> {
+export const requireAgency = cache(async function requireAgency(): Promise<AgencyContext> {
   const { supabase, user } = await requireUser();
   const { data, error } = await supabase
     .from("agency_members")
-    .select("agency_id, role, display_name, email, agencies(id, name)")
+    .select("agency_id, role, display_name, email, timezone, timezone_auto, agencies(id, name)")
     .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
@@ -47,11 +55,13 @@ export async function requireAgency(): Promise<AgencyContext> {
       role: data.role,
       display_name: data.display_name,
       email: data.email,
+      timezone: data.timezone,
+      timezone_auto: data.timezone_auto,
     },
   };
-}
+});
 
-export async function requireClient(clientId: string) {
+export const requireClient = cache(async function requireClient(clientId: string) {
   const context = await requireAgency();
   const { data, error } = await context.supabase
     .from("clients")
@@ -63,4 +73,10 @@ export async function requireClient(clientId: string) {
   if (error) throw new Error(error.message);
   if (!data) redirect("/clients");
   return { ...context, client: data };
-}
+});
+
+export const requireAgencyAdmin = cache(async function requireAgencyAdmin() {
+  const context = await requireAgency();
+  if (context.membership.role !== "owner" && context.membership.role !== "admin") redirect("/my-work");
+  return context;
+});

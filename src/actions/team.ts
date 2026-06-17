@@ -77,6 +77,49 @@ export async function updateMemberName(formData: FormData) {
   revalidatePath("/clients");
 }
 
+export async function updateMemberRole(formData: FormData) {
+  const context = await requireAgency();
+  if (context.membership.role !== "owner") {
+    throw new Error("Only the agency owner can change teammate access.");
+  }
+
+  const membershipId = z.string().uuid().parse(formData.get("membership_id"));
+  const role = z.enum(["admin", "member"]).parse(formData.get("role"));
+
+  const { data: target } = await context.supabase
+    .from("agency_members")
+    .select("id, user_id, role, email")
+    .eq("id", membershipId)
+    .eq("agency_id", context.agency.id)
+    .maybeSingle();
+  if (!target) throw new Error("Team member not found.");
+  if (target.user_id === context.user.id) {
+    throw new Error("You cannot change your own access.");
+  }
+  if (target.role === "owner") {
+    throw new Error("The agency owner access cannot be changed.");
+  }
+  if (target.role === role) return;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("agency_members")
+    .update({ role })
+    .eq("id", membershipId)
+    .eq("agency_id", context.agency.id);
+  if (error) throw new Error(error.message);
+
+  await logActivity(context.supabase, {
+    agencyId: context.agency.id,
+    actorId: context.user.id,
+    action: "team.member_role_changed",
+    entityType: "agency_member",
+    entityId: membershipId,
+    metadata: { email: target.email, role },
+  });
+  revalidatePath("/settings");
+}
+
 export async function inviteTeamMember(formData: FormData) {
   const context = await requireAgency();
   requireAdmin(context.membership.role);

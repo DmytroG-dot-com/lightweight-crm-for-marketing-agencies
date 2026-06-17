@@ -1,0 +1,46 @@
+export const TASK_SUMMARY_SELECT = [
+  "id",
+  "client_id",
+  "share_code",
+  "title",
+  "status",
+  "priority",
+  "assignee_id",
+  "task_list_id",
+  "parent_task_id",
+  "source_recurring_rule_id",
+  "start_date",
+  "due_date",
+  "clients(name)",
+].join(", ");
+
+export const TASK_DETAIL_SELECT = [
+  "id",
+  "client_id",
+  "share_code",
+  "title",
+  "description",
+  "status",
+  "priority",
+  "assignee_id",
+  "task_list_id",
+  "parent_task_id",
+  "source_recurring_rule_id",
+  "start_date",
+  "due_date",
+  "original_context",
+  "ai_generated",
+  "clients(name)",
+  "task_watchers(user_id)",
+  "task_comments(id, body, created_at, author_id, task_comment_attachments(id, storage_path, file_name, content_type, size_bytes))",
+].join(", ");
+
+export const TASK_REFERENCE_SELECT = [
+  "id",
+  "client_id",
+  "task_list_id",
+  "parent_task_id",
+  "title",
+  "status",
+  "archived_at",
+].join(", ");
