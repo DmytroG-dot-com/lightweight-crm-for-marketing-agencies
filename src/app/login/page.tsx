@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sendMagicLink } from "@/actions/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -67,6 +68,15 @@ export default async function LoginPage({
               Send magic link
             </button>
           </form>
+          <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+            <Link href="/privacy" className="transition hover:text-zinc-900 hover:underline">
+              Privacy Policy
+            </Link>
+            <span className="text-zinc-300">/</span>
+            <Link href="/terms" className="transition hover:text-zinc-900 hover:underline">
+              Terms of Service
+            </Link>
+          </div>
         </div>
       </div>
     </main>
