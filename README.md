@@ -1,5 +1,7 @@
 For support & installation email hi@dmytro.biz
 
+https://youtu.be/30o6AW-aPZM
+
 Agency CRM - lightweight and fast project management / content creation system aimed to improve agency effectivenes.
 
 Key features: 
