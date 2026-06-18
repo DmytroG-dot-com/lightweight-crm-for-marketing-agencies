@@ -1,6 +1,7 @@
 "use client";
 
 import { Archive, MoreHorizontal, Trash2, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { archiveTask, deleteTask } from "@/actions/crm";
 
@@ -20,6 +21,9 @@ const actionCopy: Record<ActionKind, { title: string; description: string; confi
 };
 
 export function TaskLifecycleActions({ clientId, taskId }: { clientId: string; taskId: string }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState<ActionKind | null>(null);
@@ -35,6 +39,13 @@ export function TaskLifecycleActions({ clientId, taskId }: { clientId: string; t
     return () => document.removeEventListener("mousedown", closeMenu);
   }, [menuOpen]);
 
+  function closeFocusedTaskUrl() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("task");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }
+
   function submit(kind: ActionKind) {
     const formData = new FormData();
     formData.set("client_id", clientId);
@@ -45,6 +56,7 @@ export function TaskLifecycleActions({ clientId, taskId }: { clientId: string; t
         await (kind === "archive" ? archiveTask(formData) : deleteTask(formData));
         setConfirming(null);
         setMenuOpen(false);
+        closeFocusedTaskUrl();
       } catch (actionError) {
         setError(actionError instanceof Error ? actionError.message : "Could not update task.");
       }

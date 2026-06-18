@@ -1,7 +1,7 @@
 "use client";
 
 import { Bold, CheckSquare, Link2, List, Pencil, Type } from "lucide-react";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 type ChecklistLine = {
   checked: boolean;
@@ -52,6 +52,20 @@ export function TaskDescriptionEditor({
   const [source, setSource] = useState(value);
   const [editing, setEditing] = useState(!value);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previousValueRef = useRef(value);
+
+  useEffect(() => {
+    const previousValue = previousValueRef.current;
+    previousValueRef.current = value;
+
+    const hasUnsavedLocalChanges = source !== previousValue;
+    if (hasUnsavedLocalChanges) return;
+
+    setSource(value);
+    if (editing && !previousValue.trim() && value.trim()) {
+      setEditing(false);
+    }
+  }, [editing, source, value]);
 
   function insert(before: string, after = "", fallback = "text") {
     const textarea = textareaRef.current;

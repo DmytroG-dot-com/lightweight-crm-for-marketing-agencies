@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ListFilter, X } from "lucide-react";
 import {
   archiveTaskList,
@@ -37,6 +38,16 @@ type Search = {
   list?: string;
   task?: string;
 };
+
+function buildTasklessClientHref(clientId: string, filters: Search) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (!value || key === "task") continue;
+    params.set(key, value);
+  }
+  const query = params.toString();
+  return query ? `/clients/${clientId}?${query}` : `/clients/${clientId}`;
+}
 
 export default async function ClientDetailPage({
   params,
@@ -182,6 +193,9 @@ export default async function ClientDetailPage({
   const clientTaskReferences = (taskReferences ?? []) as unknown as TaskReference[];
   const clientCreativeLinks = (creativeLinks ?? []) as unknown as LinkedCreativeRequest[];
   const focusedTaskRecord = focusedTask as unknown as Task | null;
+  if (tab === "tasks" && filters.task && !focusedTaskRecord) {
+    redirect(buildTasklessClientHref(clientId, filters));
+  }
   if (focusedTaskRecord && !clientTasks.some((task) => task.id === focusedTaskRecord.id)) {
     clientTasks.push(focusedTaskRecord);
   }
