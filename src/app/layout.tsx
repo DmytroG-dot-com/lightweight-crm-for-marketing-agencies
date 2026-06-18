@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agency Desk",
+  title: "Agency CRM",
   description: "Lightweight CRM and project manager for marketing agencies",
 };
 

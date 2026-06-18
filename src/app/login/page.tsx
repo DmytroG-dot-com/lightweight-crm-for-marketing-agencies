@@ -18,7 +18,7 @@ export default async function LoginPage({
     <main className="min-h-screen px-6 py-10 md:px-12 md:py-12">
       <div className="flex min-h-[calc(100vh-6rem)] max-w-xl flex-col justify-between">
         <div>
-          <p className="text-base uppercase leading-tight tracking-[-0.04em]">Agency Desk</p>
+          <p className="text-base uppercase leading-tight tracking-[-0.04em]">Agency CRM</p>
           <p className="ui-kicker mt-1">Agency CRM / Project Management</p>
         </div>
         <div className="border-t border-zinc-950 pt-5">

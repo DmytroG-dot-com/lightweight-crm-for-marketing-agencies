@@ -1,11 +1,11 @@
 begin;
 
--- Agency Desk fresh-project bootstrap, consolidated through migration 0022.
+-- Agency CRM fresh-project bootstrap, consolidated through migration 0022.
 -- Run this file once in a new Supabase project's SQL editor. Do not run the
 -- numbered migrations afterward; they are only for incrementally upgrading an
 -- existing project.
 --
--- Destructive when rerun: removes only Agency Desk objects in the public
+-- Destructive when rerun: removes only Agency CRM objects in the public
 -- schema. Supabase Auth users in auth.users are not deleted.
 drop table if exists
   public.creative_assignments,
