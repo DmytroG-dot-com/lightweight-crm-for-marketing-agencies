@@ -14,7 +14,6 @@ import {
   restoreCreativeRequest,
 } from "@/actions/creative";
 import { StatusPill } from "@/components/status-pill";
-import { MAX_GENERATED_CREATIVE_IMAGES } from "@/lib/creative/constants";
 import { CREATIVE_STATUSES } from "@/lib/constants";
 import { creativeDateTone, formatDateTime, formatLabel } from "@/lib/utils";
 
@@ -104,19 +103,13 @@ function taskHref(task: SourceTask | null | undefined) {
   return `/clients/${task.client_id}?tab=tasks&list=${task.task_list_id ?? "general"}&task=${task.id}`;
 }
 
-function normalizeCreativeCountValue(value: string) {
-  const parsed = Number.parseInt(value, 10);
-  if (Number.isNaN(parsed)) return "1";
-  return String(Math.min(MAX_GENERATED_CREATIVE_IMAGES, Math.max(1, parsed)));
-}
-
 function draftFromRequest(request: CreativeRequestModalRequest): DraftValues {
   return {
     title: request.title,
     hypothesis: request.hypothesis,
     status: request.status,
     due_date: request.due_date,
-    assets_needed: normalizeCreativeCountValue(String(request.assets_needed)),
+    assets_needed: String(request.assets_needed),
     brief: request.brief ?? "",
     references_url: request.references_url ?? "",
     notes: request.notes ?? "",
@@ -153,9 +146,7 @@ export function CreativeRequestModal({
   creators,
   personas,
   aiBriefEnabled,
-  aiUsesServerKey,
   aiImageModel,
-  canManageCreativeAi,
   sourceTask,
   closeHref,
   timezone,
@@ -165,9 +156,7 @@ export function CreativeRequestModal({
   creators: Creator[];
   personas: Persona[];
   aiBriefEnabled: boolean;
-  aiUsesServerKey: boolean;
   aiImageModel: string;
-  canManageCreativeAi: boolean;
   sourceTask: SourceTask | null;
   closeHref: string;
   timezone: string;
@@ -202,8 +191,6 @@ export function CreativeRequestModal({
   const personaName = draft.persona_id
     ? availablePersonas.find((persona) => persona.id === draft.persona_id)?.name ?? null
     : null;
-  const canGenerateBrief = !archived && canManageCreativeAi && aiBriefEnabled;
-  const canGenerateImages = canGenerateBrief && !aiUsesServerKey;
 
   const flushAutosave = useCallback(async () => {
     if (archived || savingRef.current || !queuedDraftRef.current) return;
@@ -326,7 +313,7 @@ export function CreativeRequestModal({
   }
 
   function handleGenerateBrief() {
-    if (!canGenerateBrief) return;
+    if (archived || !aiBriefEnabled) return;
 
     startBriefTransition(async () => {
       setBriefError(null);
@@ -354,7 +341,7 @@ export function CreativeRequestModal({
   }
 
   function handleGenerateImages() {
-    if (!canGenerateImages) return;
+    if (archived || !aiBriefEnabled) return;
 
     startImageTransition(async () => {
       setImageError(null);
@@ -513,9 +500,9 @@ export function CreativeRequestModal({
                   <input
                     type="number"
                     min="1"
-                    max={MAX_GENERATED_CREATIVE_IMAGES}
+                    max="4"
                     value={draft.assets_needed}
-                    onChange={(event) => updateField("assets_needed", normalizeCreativeCountValue(event.currentTarget.value), true)}
+                    onChange={(event) => updateField("assets_needed", event.currentTarget.value, true)}
                     className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm"
                   />
                 </label>
@@ -554,7 +541,7 @@ export function CreativeRequestModal({
                     <button
                       type="button"
                       onClick={handleGenerateBrief}
-                      disabled={!canGenerateBrief || briefPending}
+                      disabled={!aiBriefEnabled || briefPending}
                       className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {briefPending ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
@@ -569,9 +556,7 @@ export function CreativeRequestModal({
                     className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm"
                   />
                   <span className="mt-1.5 block text-xs text-zinc-500">
-                    {!canManageCreativeAi
-                      ? "Only owners and admins can generate AI briefs."
-                      : !aiBriefEnabled
+                    {!aiBriefEnabled
                       ? "Enable OpenAI in Settings before generating briefs."
                       : !draft.persona_id
                         ? "Select an ICP first. One clear paragraph about who they are and what they want is enough to start."
@@ -600,7 +585,7 @@ export function CreativeRequestModal({
                     <button
                       type="button"
                       onClick={handleGenerateImages}
-                      disabled={!canGenerateImages || imagePending}
+                      disabled={!aiBriefEnabled || imagePending}
                       className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {imagePending ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
@@ -634,20 +619,12 @@ export function CreativeRequestModal({
                     </label>
                     <div className="text-xs text-zinc-500">
                       <p className="font-medium text-zinc-700">Model</p>
-                      <p className="mt-1">
-                        {aiUsesServerKey
-                          ? `Current model: ${aiImageModel}. Add a stored agency OpenAI key in Settings to enable image generation.`
-                          : `Uses ${aiImageModel} through the agency OpenAI key.`}
-                      </p>
+                      <p className="mt-1">Uses `{aiImageModel}` through your agency OpenAI key.</p>
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-zinc-500">
-                    {!canManageCreativeAi
-                      ? "Only owners and admins can generate AI images."
-                      : !aiBriefEnabled
+                    {!aiBriefEnabled
                       ? "Enable OpenAI in Settings before generating images."
-                      : aiUsesServerKey
-                        ? "Store an agency OpenAI key in Settings before generating images. The shared fallback key is disabled here."
                       : !draft.brief.trim()
                         ? "Generate or write a brief first so the image direction is specific."
                         : "Best for reference concepts, early testing, or creator direction. Images are not stored in the database."}

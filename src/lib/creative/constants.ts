@@ -1,1 +1,0 @@
-export const MAX_GENERATED_CREATIVE_IMAGES = 10;

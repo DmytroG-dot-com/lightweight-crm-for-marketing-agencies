@@ -10,7 +10,6 @@ export type AiRuntimeSettings = {
   imageModel: string;
   apiKey: string;
   taskPrompt: string;
-  usesServerKey: boolean;
 };
 
 export const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
@@ -107,7 +106,6 @@ export async function getAgencyAiRuntimeSettings(agencyId: string): Promise<AiRu
   const { data } = await getAiSettingsWithPrompt(agencyId);
   if (data && !data.enabled) return null;
 
-  const hasStoredKey = Boolean(data?.encrypted_api_key);
   const apiKey = data?.encrypted_api_key
     ? decryptSecret(data.encrypted_api_key)
     : process.env.OPENAI_API_KEY;
@@ -119,6 +117,5 @@ export async function getAgencyAiRuntimeSettings(agencyId: string): Promise<AiRu
     imageModel: data?.image_model ?? process.env.OPENAI_IMAGE_MODEL ?? DEFAULT_OPENAI_IMAGE_MODEL,
     apiKey,
     taskPrompt: data?.task_prompt?.trim() || DEFAULT_TASK_PROMPT,
-    usesServerKey: !hasStoredKey,
   };
 }

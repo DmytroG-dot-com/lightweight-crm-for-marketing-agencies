@@ -319,7 +319,7 @@ create table public.creative_requests (
   hypothesis text not null,
   preferred_launch_date date not null default (current_date + 4),
   due_date date not null default (current_date + 4),
-  assets_needed integer not null default 1 check (assets_needed > 0 and assets_needed <= 10),
+  assets_needed integer not null default 1 check (assets_needed > 0),
   brief text,
   brief_json jsonb,
   brief_context_snapshot jsonb,
