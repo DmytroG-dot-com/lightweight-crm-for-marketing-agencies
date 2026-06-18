@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { getAgencyAiSettingsSummary } from "@/lib/ai/settings";
+import { MAX_GENERATED_CREATIVE_IMAGES } from "@/lib/creative/constants";
 import { requireAgency } from "@/lib/auth";
 import { CREATIVE_STATUSES } from "@/lib/constants";
 import { addDaysToDateValue, creativeDateTone, dateInputValue, formatLabel } from "@/lib/utils";
@@ -216,6 +217,7 @@ export default async function CreativeMasterPage({
   const prefillSourceTask = filters.sourceTaskId ? sourceTaskById.get(filters.sourceTaskId) ?? null : null;
   const prefillClientId = prefillSourceTask?.client_id ?? filters.clientId ?? "";
   const hasFilters = Boolean(filters.q || filters.status || filters.creator || filters.client || filters.sort);
+  const canManageCreativeAi = context.membership.role === "owner" || context.membership.role === "admin";
   const selectedRequest = filters.request
     ? requests.find((request) => request.id === filters.request) ?? null
     : null;
@@ -295,7 +297,7 @@ export default async function CreativeMasterPage({
               name="assets_needed"
               type="number"
               min="1"
-              max="4"
+              max={MAX_GENERATED_CREATIVE_IMAGES}
               defaultValue="1"
               className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm"
             />
@@ -512,7 +514,9 @@ export default async function CreativeMasterPage({
           creators={(creators ?? []).map((item) => ({ id: item.id, name: item.name, active: item.active }))}
           personas={availablePersonas}
           aiBriefEnabled={aiSettings.enabled && aiSettings.configured}
+          aiUsesServerKey={aiSettings.usesServerKey}
           aiImageModel={aiSettings.imageModel}
+          canManageCreativeAi={canManageCreativeAi}
           sourceTask={selectedSourceTask}
           closeHref={buildQuery(filters, { request: null })}
           timezone={context.membership.timezone}

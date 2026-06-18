@@ -1,11 +1,12 @@
 import "server-only";
 
 import { z } from "zod";
+import { MAX_GENERATED_CREATIVE_IMAGES } from "@/lib/creative/constants";
 import { DEFAULT_OPENAI_IMAGE_MODEL } from "@/lib/ai/settings";
 
 export const CREATIVE_IMAGE_SIZES = ["1024x1024", "1024x1536", "1536x1024"] as const;
 export const CREATIVE_IMAGE_QUALITIES = ["low", "medium", "high"] as const;
-export const MAX_GENERATED_CREATIVE_IMAGES = 4;
+export { MAX_GENERATED_CREATIVE_IMAGES };
 
 const creativeImageResponseSchema = z.object({
   error: z.object({ message: z.string().optional() }).nullish(),

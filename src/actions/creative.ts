@@ -9,10 +9,10 @@ import {
   CREATIVE_IMAGE_QUALITIES,
   CREATIVE_IMAGE_SIZES,
   generateCreativeImagesWithAi,
-  MAX_GENERATED_CREATIVE_IMAGES,
   type CreativeImageQuality,
   type CreativeImageSize,
 } from "@/lib/ai/creative-images";
+import { MAX_GENERATED_CREATIVE_IMAGES } from "@/lib/creative/constants";
 import { getAgencyAiRuntimeSettings } from "@/lib/ai/settings";
 import { requireAgency, requireClient } from "@/lib/auth";
 import { CREATIVE_STATUSES } from "@/lib/constants";
@@ -57,6 +57,12 @@ function relatedClientName(value: unknown) {
   return client && typeof client === "object" && "name" in client
     ? String(client.name)
     : "Client";
+}
+
+function requireCreativeAiAdmin(role: string) {
+  if (role !== "owner" && role !== "admin") {
+    throw new Error("Only agency owners and admins can generate AI briefs and images.");
+  }
 }
 
 async function validateCreatorId(
@@ -619,6 +625,7 @@ export async function deleteClientPersona(formData: FormData) {
 
 export async function generateCreativeBrief(formData: FormData) {
   const context = await requireAgency();
+  requireCreativeAiAdmin(context.membership.role);
   const requestId = z.string().uuid().parse(formData.get("request_id"));
   const { data: request, error: requestError } = await context.supabase
     .from("creative_requests")
@@ -755,6 +762,7 @@ const imageQualitySchema = z.enum(CREATIVE_IMAGE_QUALITIES);
 
 export async function generateCreativeImages(formData: FormData) {
   const context = await requireAgency();
+  requireCreativeAiAdmin(context.membership.role);
   const requestId = z.string().uuid().parse(formData.get("request_id"));
   const size = imageSizeSchema.parse(formData.get("size") ?? "1024x1536");
   const quality = imageQualitySchema.parse(formData.get("quality") ?? "medium");
@@ -774,6 +782,9 @@ export async function generateCreativeImages(formData: FormData) {
   const imageCount = z.coerce.number().int().min(1).max(MAX_GENERATED_CREATIVE_IMAGES).parse(formData.get("count") ?? String(request.assets_needed ?? 1));
   const aiSettings = await getAgencyAiRuntimeSettings(context.agency.id);
   if (!aiSettings) throw new Error("Enable OpenAI in Settings before generating images.");
+  if (aiSettings.usesServerKey) {
+    throw new Error("Store an agency OpenAI API key in Settings before generating images. The shared fallback key is disabled for creative image generation.");
+  }
 
   const { data: personas, error: personasError } = await context.supabase
     .from("client_personas")
