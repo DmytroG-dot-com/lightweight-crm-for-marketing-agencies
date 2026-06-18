@@ -3,6 +3,7 @@ import { logActivity } from "@/lib/activity";
 import { ensureTaskWatchers } from "@/lib/notifications";
 import { advanceRecurringDate, recurringOccurrence } from "@/lib/recurrence";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizeNullableTaskDescription } from "@/lib/task-description";
 import { dateInputValue } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
           source_recurring_rule_id: rule.id,
           occurrence_date: occurrenceDate,
           title: rule.title,
-          description: rule.description,
+          description: normalizeNullableTaskDescription(rule.description),
           status: "todo",
           priority: rule.priority,
           assignee_id: rule.assignee_id,

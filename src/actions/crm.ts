@@ -10,6 +10,7 @@ import { DOSSIER_SECTIONS, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constant
 import { ensureTaskWatchers, findMentionedMemberIds, notifyTaskAudience } from "@/lib/notifications";
 import { advanceRecurringDate, moveToWeekday, recurringOccurrence } from "@/lib/recurrence";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizeNullableTaskDescription } from "@/lib/task-description";
 import { TASK_DETAIL_SELECT } from "@/lib/task-selects";
 import { dateInputValue } from "@/lib/utils";
 
@@ -445,7 +446,7 @@ export async function createTask(formData: FormData) {
       task_list_id: taskListId,
       parent_task_id: parentTaskId,
       title,
-      description: optional(formData, "description"),
+      description: normalizeNullableTaskDescription(optional(formData, "description")),
       status: z.enum(TASK_STATUSES).parse(formData.get("status") || "todo"),
       priority: z.enum(TASK_PRIORITIES).parse(formData.get("priority") || "normal"),
       assignee_id: optional(formData, "assignee_id"),
@@ -506,7 +507,7 @@ export async function updateTask(formData: FormData) {
     .from("tasks")
     .update({
       title: z.string().trim().min(1).parse(formData.get("title")),
-      description: optional(formData, "description"),
+      description: normalizeNullableTaskDescription(optional(formData, "description")),
       status: nextStatus,
       priority: z.enum(TASK_PRIORITIES).parse(formData.get("priority")),
       assignee_id: optional(formData, "assignee_id"),
@@ -577,7 +578,9 @@ export async function updateTaskField(formData: FormData) {
   if (!previousTask) throw new Error("Task not found.");
 
   if (field === "title") value = z.string().trim().min(1).max(500).parse(rawValue);
-  if (field === "description") value = rawValue ? z.string().max(100000).parse(rawValue) : null;
+  if (field === "description") value = rawValue
+    ? normalizeNullableTaskDescription(z.string().max(100000).parse(rawValue))
+    : null;
   if (field === "status") value = z.enum(TASK_STATUSES).parse(rawValue);
   if (field === "priority") value = z.enum(TASK_PRIORITIES).parse(rawValue);
   if ((field === "start_date" || field === "due_date") && rawValue) {
@@ -797,7 +800,7 @@ export async function setTaskRecurrence(input: unknown) {
   const ruleValues = {
     task_list_id: recurringListId,
     title: task.title,
-    description: task.description,
+    description: normalizeNullableTaskDescription(task.description),
     priority: task.priority,
     assignee_id: task.assignee_id,
     frequency: parsed.frequency,
@@ -1410,7 +1413,7 @@ export async function createRecurringRule(formData: FormData) {
   const frequency = z.enum(["daily", "weekly", "monthly"]).parse(formData.get("frequency"));
   const intervalCount = z.coerce.number().int().positive().parse(formData.get("interval_count"));
   const title = z.string().trim().min(1).parse(formData.get("title"));
-  const description = optional(formData, "description");
+  const description = normalizeNullableTaskDescription(optional(formData, "description"));
   const priority = z.enum(TASK_PRIORITIES).parse(formData.get("priority") || "normal");
   if (assigneeId) {
     const { data: member } = await context.supabase

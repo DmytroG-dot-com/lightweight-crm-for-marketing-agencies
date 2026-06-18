@@ -9,6 +9,7 @@ import { parseTaskInstruction, type AiTaskDraft } from "@/lib/ai/task-parser";
 import { requireAgency, requireClient } from "@/lib/auth";
 import { ensureTaskWatchers } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizeTaskDescription } from "@/lib/task-description";
 import { addDaysToDateValue, dateInputValue } from "@/lib/utils";
 
 const quickTaskSchema = z.object({
@@ -31,7 +32,7 @@ function fallbackTitle(instruction: string) {
 
 function combinedDescription(generated: string, instruction: string) {
   const clean = generated.trim();
-  return `${clean ? `${clean}\n\n` : ""}## Original request\n${instruction}`;
+  return normalizeTaskDescription(`${clean ? `${clean}\n\n` : ""}## Original request\n${instruction}`);
 }
 
 export async function createTaskFromInstruction(input: unknown) {

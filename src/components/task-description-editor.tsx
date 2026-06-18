@@ -2,45 +2,7 @@
 
 import { Bold, CheckSquare, Link2, List, Pencil, Type } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
-
-type ChecklistLine = {
-  checked: boolean;
-  indent: string;
-  text: string;
-};
-
-function parseChecklistLine(line: string): ChecklistLine | null {
-  const markdown = line.match(/^(\s*)(?:[-*+]\s*)?\[([ xX✓]?)\]\s*(.*)$/);
-  if (markdown) {
-    return {
-      checked: ["x", "✓"].includes(markdown[2].toLowerCase()),
-      indent: markdown[1],
-      text: markdown[3],
-    };
-  }
-
-  const unicode = line.match(/^(\s*)(☐|☑|✅)\s*(.*)$/);
-  if (!unicode) return null;
-  return {
-    checked: unicode[2] !== "☐",
-    indent: unicode[1],
-    text: unicode[3],
-  };
-}
-
-function checklistMarkdown(checklist: ChecklistLine) {
-  return `${checklist.indent}- [${checklist.checked ? "x" : " "}] ${checklist.text}`;
-}
-
-function normalizeChecklists(value: string) {
-  return value
-    .split("\n")
-    .map((line) => {
-      const checklist = parseChecklistLine(line);
-      return checklist ? checklistMarkdown(checklist) : line;
-    })
-    .join("\n");
-}
+import { checklistMarkdown, normalizeTaskDescription, parseChecklistLine } from "@/lib/task-description";
 
 export function TaskDescriptionEditor({
   value,
@@ -49,23 +11,24 @@ export function TaskDescriptionEditor({
   value: string;
   onSave: (value: string) => void;
 }) {
-  const [source, setSource] = useState(value);
+  const normalizedValue = normalizeTaskDescription(value);
+  const [source, setSource] = useState(() => normalizedValue);
   const [editing, setEditing] = useState(!value);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const previousValueRef = useRef(value);
+  const previousValueRef = useRef(normalizedValue);
 
   useEffect(() => {
     const previousValue = previousValueRef.current;
-    previousValueRef.current = value;
+    previousValueRef.current = normalizedValue;
 
     const hasUnsavedLocalChanges = source !== previousValue;
     if (hasUnsavedLocalChanges) return;
 
-    setSource(value);
-    if (editing && !previousValue.trim() && value.trim()) {
+    setSource(normalizedValue);
+    if (editing && !previousValue.trim() && normalizedValue.trim()) {
       setEditing(false);
     }
-  }, [editing, source, value]);
+  }, [editing, normalizedValue, source]);
 
   function insert(before: string, after = "", fallback = "text") {
     const textarea = textareaRef.current;
@@ -82,7 +45,7 @@ export function TaskDescriptionEditor({
   }
 
   function saveAndClose() {
-    const normalized = normalizeChecklists(source);
+    const normalized = normalizeTaskDescription(source);
     setSource(normalized);
     onSave(normalized);
     setEditing(false);
@@ -172,7 +135,7 @@ export function TaskDescriptionEditor({
         autoFocus
       />
       <div className="flex justify-end gap-2 border-t border-zinc-200 px-3 py-2">
-        <button type="button" onClick={() => { setSource(value); setEditing(false); }} className="text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-400 hover:text-zinc-950">Cancel</button>
+        <button type="button" onClick={() => { setSource(normalizedValue); setEditing(false); }} className="text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-400 hover:text-zinc-950">Cancel</button>
         <button type="button" onClick={saveAndClose} className="text-[9px] font-semibold uppercase tracking-[0.1em] text-blue-700 hover:text-blue-900">Done</button>
       </div>
     </div>
@@ -188,10 +151,11 @@ function FormatButton({ label, onClick, children }: { label: string; onClick: ()
 }
 
 function DescriptionView({ source, onToggleChecklist }: { source: string; onToggleChecklist: (lineIndex: number) => void }) {
-  if (!source.trim()) return <p className="text-sm text-zinc-400">Add a description, links, or checklist items.</p>;
+  const normalizedSource = normalizeTaskDescription(source);
+  if (!normalizedSource.trim()) return <p className="text-sm text-zinc-400">Add a description, links, or checklist items.</p>;
   return (
     <div className="space-y-2 pr-14 text-sm leading-6 text-zinc-700">
-      {source.split("\n").map((line, index) => {
+      {normalizedSource.split("\n").map((line, index) => {
         const checklist = parseChecklistLine(line);
         if (checklist) {
           return (
