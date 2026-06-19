@@ -8,6 +8,20 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ sent?: string; error?: string }>;
 }) {
+  const featureCards = [
+    {
+      title: "Knows the client cold",
+      description: "Offers, ICPs, objections, proof, onboarding answers, and past context stay attached to the work, so nobody briefs from memory.",
+    },
+    {
+      title: "Builds the work so nothing gets missed",
+      description: "From Monday reports to complex funnels and automations, it creates faster, more precise task structure with the small steps included, so critical work does not get skipped.",
+    },
+    {
+      title: "Turns context into briefs and creatives",
+      description: "Use what the CRM already knows to generate sharper briefs, better creative direction, and image-ready ideas without starting from a blank page.",
+    },
+  ];
   const supabase = await createClient();
   const {
     data: { user },
@@ -38,11 +52,26 @@ export default async function LoginPage({
             </div>
           </div>
         </section>
+        <section className="max-w-4xl">
+          <p className="ui-kicker mb-3">Key features</p>
+          <div className="grid gap-3 md:grid-cols-3">
+            {featureCards.map((feature) => (
+              <div key={feature.title} className="rounded-2xl border border-zinc-200 bg-white p-5">
+                <h2 className="text-lg font-normal uppercase leading-tight tracking-[-0.04em] text-zinc-950">
+                  {feature.title}
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-zinc-500">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
         <div className="max-w-xl border-t border-zinc-950 pt-5">
           <p className="ui-kicker mb-3">Account access</p>
           <h1 className="text-4xl font-normal uppercase leading-none tracking-[-0.055em]">Sign up or sign in</h1>
           <p className="mt-4 max-w-md text-sm leading-6 text-zinc-500">
-            Enter your email. New users get an agency automatically; invited teammates join their agency.
+            New users get an agency automatically; invited teammates join their agency.
           </p>
           {params.sent && (
             <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
