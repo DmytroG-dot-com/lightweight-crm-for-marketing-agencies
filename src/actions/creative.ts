@@ -9,7 +9,6 @@ import {
   CREATIVE_IMAGE_QUALITIES,
   CREATIVE_IMAGE_SIZES,
   generateCreativeImagesWithAi,
-  MAX_GENERATED_CREATIVE_IMAGES,
   type CreativeImageQuality,
   type CreativeImageSize,
 } from "@/lib/ai/creative-images";
@@ -29,7 +28,7 @@ const creativeDetailsSchema = z.object({
   hypothesis: z.string().trim().max(5000).optional(),
   status: z.enum(CREATIVE_STATUSES),
   due_date: z.string().date(),
-  assets_needed: z.coerce.number().int().min(1).max(MAX_GENERATED_CREATIVE_IMAGES),
+  assets_needed: z.coerce.number().int().min(1),
   brief: z.string().trim().max(20000).optional(),
   references_url: z.string().trim().url().optional().or(z.literal("")),
   notes: z.string().trim().max(20000).optional(),
@@ -149,7 +148,7 @@ export async function createCreativeRequest(formData: FormData) {
   const hypothesis = z.string().trim().max(5000).parse(String(formData.get("hypothesis") ?? "").trim() || title);
   const today = dateInputValue(new Date(), context.membership.timezone);
   const dueDate = z.string().date().parse(optional(formData, "due_date") ?? addDaysToDateValue(today, 4));
-  const assetsNeeded = z.coerce.number().int().min(1).max(MAX_GENERATED_CREATIVE_IMAGES).parse(formData.get("assets_needed") ?? "1");
+  const assetsNeeded = z.coerce.number().int().min(1).parse(formData.get("assets_needed") ?? "1");
   const creatorId = await validateCreatorId(context, optional(formData, "creator_id"));
   const personaId = await validatePersonaId(context, clientId, optional(formData, "persona_id"));
   const sourceTaskId = await validateSourceTaskId(context, optional(formData, "source_task_id"));
@@ -771,7 +770,7 @@ export async function generateCreativeImages(formData: FormData) {
     throw new Error("Restore the client before generating images.");
   }
 
-  const imageCount = z.coerce.number().int().min(1).max(MAX_GENERATED_CREATIVE_IMAGES).parse(formData.get("count") ?? String(request.assets_needed ?? 1));
+  const imageCount = z.coerce.number().int().min(1).parse(formData.get("count") ?? String(request.assets_needed ?? 1));
   const aiSettings = await getAgencyAiRuntimeSettings(context.agency.id);
   if (!aiSettings) throw new Error("Enable OpenAI in Settings before generating images.");
 

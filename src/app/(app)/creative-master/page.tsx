@@ -295,7 +295,6 @@ export default async function CreativeMasterPage({
               name="assets_needed"
               type="number"
               min="1"
-              max="4"
               defaultValue="1"
               className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm"
             />

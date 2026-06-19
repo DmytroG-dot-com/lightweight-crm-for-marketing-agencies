@@ -500,7 +500,6 @@ export function CreativeRequestModal({
                   <input
                     type="number"
                     min="1"
-                    max="4"
                     value={draft.assets_needed}
                     onChange={(event) => updateField("assets_needed", event.currentTarget.value, true)}
                     className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm"
