@@ -617,6 +617,10 @@ export async function deleteClientPersona(formData: FormData) {
 }
 
 export async function generateCreativeBrief(formData: FormData) {
+  type CreativeBriefActionResult =
+    | { ok: true }
+    | { ok: false; error: string };
+
   const context = await requireAgency();
   const requestId = z.string().uuid().parse(formData.get("request_id"));
   const { data: request, error: requestError } = await context.supabase
@@ -626,13 +630,15 @@ export async function generateCreativeBrief(formData: FormData) {
     .eq("agency_id", context.agency.id)
     .maybeSingle();
   if (requestError) throw new Error(requestError.message);
-  if (!request) throw new Error("Creative request not found.");
+  if (!request) return { ok: false, error: "Creative request not found." } satisfies CreativeBriefActionResult;
   if (request.archived_at || relatedClientStatus(request.clients) === "archived") {
-    throw new Error("Restore the client before generating a brief.");
+    return { ok: false, error: "Restore the client before generating a brief." } satisfies CreativeBriefActionResult;
   }
 
   const aiSettings = await getAgencyAiRuntimeSettings(context.agency.id);
-  if (!aiSettings) throw new Error("Enable OpenAI in Settings before generating briefs.");
+  if (!aiSettings) {
+    return { ok: false, error: "Enable OpenAI in Settings before generating briefs." } satisfies CreativeBriefActionResult;
+  }
 
   const { data: personas, error: personasError } = await context.supabase
     .from("client_personas")
@@ -645,13 +651,15 @@ export async function generateCreativeBrief(formData: FormData) {
   if (personasError) throw new Error(personasError.message);
 
   const activePersonas = personas ?? [];
-  if (!activePersonas.length) throw new Error("Add an ICP for this client before generating a brief.");
+  if (!activePersonas.length) {
+    return { ok: false, error: "Add an ICP for this client before generating a brief." } satisfies CreativeBriefActionResult;
+  }
 
   const resolvedPersona = request.persona_id
     ? activePersonas.find((persona) => persona.id === request.persona_id) ?? null
     : activePersonas.find((persona) => persona.is_primary) ?? (activePersonas.length === 1 ? activePersonas[0] : null);
   if (!resolvedPersona) {
-    throw new Error("Select an ICP on the creative request before generating a brief.");
+    return { ok: false, error: "Select an ICP on the creative request before generating a brief." } satisfies CreativeBriefActionResult;
   }
 
   const [
@@ -747,6 +755,8 @@ export async function generateCreativeBrief(formData: FormData) {
     },
   });
   await revalidateCreativeViews(context, { clientId: request.client_id, creatorIds: [request.creator_id] });
+
+  return { ok: true } satisfies CreativeBriefActionResult;
 }
 
 const imageSizeSchema = z.enum(CREATIVE_IMAGE_SIZES);

@@ -7,6 +7,12 @@ import { logActivity } from "@/lib/activity";
 import { requireAgency, requireClient } from "@/lib/auth";
 import { signTaskAttachments } from "@/lib/comment-attachments";
 import { DOSSIER_SECTIONS, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
+import {
+  DOSSIER_SECTION_QUESTIONS,
+  dossierQuestionFieldName,
+  dossierSectionNotesFieldName,
+  dossierSectionPreservedFieldName,
+} from "@/lib/dossier";
 import { ensureTaskWatchers, findMentionedMemberIds, notifyTaskAudience } from "@/lib/notifications";
 import { advanceRecurringDate, moveToWeekday, recurringOccurrence } from "@/lib/recurrence";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -1364,13 +1370,40 @@ export async function saveDossier(formData: FormData) {
   const context = await requireClient(clientId);
   const sections = Object.fromEntries(
     DOSSIER_SECTIONS.map((section) => {
-      const value = String(formData.get(section) ?? "").trim();
-      if (!value) return [section, {}];
-      try {
-        return [section, JSON.parse(value)];
-      } catch {
-        return [section, { notes: value }];
+      const preservedRaw = String(formData.get(dossierSectionPreservedFieldName(section)) ?? "").trim();
+      let sectionValue: Record<string, unknown> = {};
+
+      if (preservedRaw) {
+        try {
+          const parsed = JSON.parse(preservedRaw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            sectionValue = parsed as Record<string, unknown>;
+          }
+        } catch {
+          sectionValue = {};
+        }
       }
+
+      DOSSIER_SECTION_QUESTIONS[section].forEach((question) => {
+        const rawValue = String(formData.get(dossierQuestionFieldName(question.key)) ?? "").trim();
+        if (!rawValue) return;
+
+        sectionValue[question.key] = question.type === "multi"
+          ? rawValue
+            .split(/\r?\n/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+          : rawValue;
+      });
+
+      const notes = String(formData.get(dossierSectionNotesFieldName(section)) ?? "").trim();
+      if (notes) {
+        sectionValue.notes = notes;
+      } else {
+        delete sectionValue.notes;
+      }
+
+      return [section, sectionValue];
     }),
   );
 

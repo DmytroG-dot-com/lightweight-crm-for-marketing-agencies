@@ -325,7 +325,11 @@ export function CreativeRequestModal({
       try {
         const formData = new FormData();
         formData.set("request_id", request.id);
-        await generateCreativeBrief(formData);
+        const result = await generateCreativeBrief(formData);
+        if (!result.ok) {
+          setBriefError(result.error);
+          return;
+        }
         router.refresh();
       } catch (error) {
         setBriefError(error instanceof Error ? error.message : "Could not generate creative brief.");
