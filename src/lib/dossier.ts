@@ -3,14 +3,15 @@ import { ONBOARDING_GROUPS, type OnboardingQuestion } from "@/lib/onboarding";
 
 type DossierSection = (typeof DOSSIER_SECTIONS)[number];
 
-const sectionQuestions = Object.fromEntries(
-  DOSSIER_SECTIONS.map((section) => [
-    section,
-    ONBOARDING_GROUPS.flatMap((group) => group.questions).filter(
-      (question) => question.target === section,
-    ),
-  ]),
-) as Record<DossierSection, readonly OnboardingQuestion[]>;
+const allQuestions = ONBOARDING_GROUPS.flatMap((group) => group.questions);
+
+const sectionQuestions = DOSSIER_SECTIONS.reduce<Record<DossierSection, readonly OnboardingQuestion[]>>(
+  (acc, section) => {
+    acc[section] = allQuestions.filter((question) => question.target === section);
+    return acc;
+  },
+  {} as Record<DossierSection, readonly OnboardingQuestion[]>,
+);
 
 export const DOSSIER_SECTION_QUESTIONS = sectionQuestions;
 
