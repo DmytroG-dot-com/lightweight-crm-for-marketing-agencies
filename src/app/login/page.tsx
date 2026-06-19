@@ -15,11 +15,77 @@ export default async function LoginPage({
     },
     {
       title: "Builds the work so nothing gets missed",
-      description: "From Monday reports to complex funnels and automations, it creates faster, more precise task structure with the small steps included, so critical work does not get skipped.",
+      description: "From weekly reporting to complex funnels and automations, it creates faster, more precise task structure with the small steps included, so critical work does not get skipped.",
     },
     {
       title: "Turns context into briefs and creatives",
       description: "Use what the CRM already knows to generate sharper briefs, better creative direction, and image-ready ideas without starting from a blank page.",
+    },
+  ];
+  const specSections = [
+    {
+      title: "Client workspaces",
+      items: [
+        "Agency-scoped client records with status management, notes, and contact details.",
+        "Automatic General and Recurring task lists for every new client.",
+        "Archive, restore, and delete flows for full client workspaces.",
+      ],
+    },
+    {
+      title: "Dossiers and personas",
+      items: [
+        "Structured strategy context for audience, offer, competitors, proof, pricing, messaging, and more.",
+        "Freeform knowledge base text and AI summaries.",
+        "Multiple personas per client with pains, objections, triggers, awareness stage, and offer fit.",
+      ],
+    },
+    {
+      title: "Tasks and execution",
+      items: [
+        "Nested tasks, assignees, due dates, status flow, priorities, comments, watchers, and attachments.",
+        "Shareable task links and task-tree archive, restore, and move operations.",
+        "My Work view that shows what is due today, overdue, and next up.",
+      ],
+    },
+    {
+      title: "AI task creation",
+      items: [
+        "Turns natural-language instructions into structured tasks.",
+        "Uses client context, active lists, open work, and team members to shape the task properly.",
+        "Stores source context and metadata for AI-generated work.",
+      ],
+    },
+    {
+      title: "Recurring ops and onboarding",
+      items: [
+        "Daily, weekly, and monthly recurring task rules with due offsets and weekend handling.",
+        "Protected cron flow that generates due recurring tasks automatically.",
+        "Tokenized onboarding links with draft saves, submissions, and review flow.",
+      ],
+    },
+    {
+      title: "Briefs and creative production",
+      items: [
+        "Creative requests with hypotheses, launch timing, assets needed, references, notes, and status tracking.",
+        "AI-generated creative briefs from client context.",
+        "AI image-generation support inside the creative workflow.",
+      ],
+    },
+    {
+      title: "External creators and reporting",
+      items: [
+        "External creator portal for assignments, comments, and completed Drive-folder submissions.",
+        "Agency roles, invitations, member management, and timezone settings.",
+        "AI team reports for last week, this week, and last 30 days using real operational metrics.",
+      ],
+    },
+    {
+      title: "Stack and security",
+      items: [
+        "Next.js 16, React 19, TypeScript 5, Tailwind CSS 4.",
+        "Supabase Auth, Postgres, Storage, SSR, and server actions.",
+        "Strict row-level security and database-enforced agency boundaries.",
+      ],
     },
   ];
   const supabase = await createClient();
@@ -66,6 +132,33 @@ export default async function LoginPage({
               </div>
             ))}
           </div>
+          <details className="mt-5 border-y border-zinc-200 bg-white">
+            <summary className="flex cursor-pointer items-center justify-between py-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-zinc-950">
+              Read full spec sheet
+              <span aria-hidden="true" className="text-sm text-zinc-400">+</span>
+            </summary>
+            <div className="border-t border-zinc-200 py-5">
+              <p className="max-w-3xl text-sm leading-6 text-zinc-500">
+                Agency CRM is multi-tenant, client-context-driven, and built for agency execution rather than generic record keeping.
+              </p>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                {specSections.map((section) => (
+                  <div key={section.title} className="border border-zinc-200 bg-white p-5">
+                    <h3 className="text-lg font-normal uppercase leading-tight tracking-[-0.04em] text-zinc-950">
+                      {section.title}
+                    </h3>
+                    <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-500">
+                      {section.items.map((item) => (
+                        <li key={item} className="border-t border-zinc-100 pt-3 first:border-t-0 first:pt-0">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </details>
         </section>
         <div className="max-w-xl border-t border-zinc-950 pt-5">
           <p className="ui-kicker mb-3">Account access</p>
