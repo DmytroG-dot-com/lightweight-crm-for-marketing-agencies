@@ -345,7 +345,10 @@ export async function archiveTaskList(formData: FormData) {
     entityId: listId,
     metadata: { name: list.name },
   });
-  redirect(`/clients/${clientId}?tab=tasks&list=general`);
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/my-work");
+  revalidatePath("/team");
+  return { redirectTo: `/clients/${clientId}?tab=tasks&list=general` };
 }
 
 export async function deleteTaskList(formData: FormData) {
@@ -380,7 +383,8 @@ export async function deleteTaskList(formData: FormData) {
     .eq("id", listId)
     .eq("agency_id", context.agency.id);
   if (error) throw new Error(error.message);
-  redirect(`/clients/${clientId}?tab=tasks&list=general`);
+  revalidatePath(`/clients/${clientId}`);
+  return { redirectTo: `/clients/${clientId}?tab=tasks&list=general` };
 }
 
 async function validateTaskRelations(

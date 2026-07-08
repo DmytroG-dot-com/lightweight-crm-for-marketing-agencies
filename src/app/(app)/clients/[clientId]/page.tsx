@@ -2,9 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ListFilter, X } from "lucide-react";
 import {
-  archiveTaskList,
   copyOnboardingToDossier,
-  deleteTaskList,
   generateOnboardingLink,
   setOnboardingLinkActive,
   updateClient,
@@ -22,6 +20,7 @@ import { QuickTaskComposer } from "@/components/quick-task-composer";
 import { RecurringScheduleManager } from "@/components/recurring-schedule-manager";
 import { StatusPill } from "@/components/status-pill";
 import { TaskCsvImporter } from "@/components/task-csv-importer";
+import { TaskListActions } from "@/components/task-list-actions";
 import { TaskTemplateControls } from "@/components/task-template-controls";
 import { TaskRestoreAction } from "@/components/task-restore-action";
 import { type List, type Member, type Task, TaskTable } from "@/components/task-table";
@@ -308,20 +307,7 @@ export default async function ClientDetailPage({
                 templates={(templates ?? []) as Array<{ id: string; name: string; description: string | null }>}
               />
             )}
-            {selectedList?.kind === "custom" && (
-              <div className="ml-auto flex items-center gap-3">
-                <form action={archiveTaskList}>
-                  <input type="hidden" name="client_id" value={clientId} />
-                  <input type="hidden" name="list_id" value={selectedList.id} />
-                  <button className="text-xs font-medium text-zinc-600">Archive list</button>
-                </form>
-                <form action={deleteTaskList}>
-                  <input type="hidden" name="client_id" value={clientId} />
-                  <input type="hidden" name="list_id" value={selectedList.id} />
-                  <button className="text-xs font-medium text-red-600">Delete empty list</button>
-                </form>
-              </div>
-            )}
+            {selectedList?.kind === "custom" && <TaskListActions clientId={clientId} listId={selectedList.id} />}
           </div>
           {selectedList?.kind === "recurring" ? (
             <RecurringScheduleManager
