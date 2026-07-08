@@ -1,29 +1,49 @@
 import { DOSSIER_SECTIONS } from "@/lib/constants";
 
 type DossierSection = (typeof DOSSIER_SECTIONS)[number];
-type QuestionType = "short" | "long" | "email" | "url" | "choice" | "multi";
+
+export const ONBOARDING_QUESTION_TYPES = ["short", "long", "email", "url", "choice", "multi"] as const;
+export type OnboardingQuestionType = (typeof ONBOARDING_QUESTION_TYPES)[number];
+
+export const ONBOARDING_TARGETS = [...DOSSIER_SECTIONS, "knowledge_base", "none"] as const;
+export type OnboardingQuestionTarget = (typeof ONBOARDING_TARGETS)[number];
+
+export const DEFAULT_ONBOARDING_TEMPLATE_NAME = "Standard onboarding";
 
 export type OnboardingQuestion = {
   key: string;
-  target: DossierSection | "knowledge_base";
+  target: OnboardingQuestionTarget;
   label: string;
-  type: QuestionType;
+  type: OnboardingQuestionType;
   required?: boolean;
   placeholder?: string;
-  options?: readonly string[];
+  options?: string[];
 };
 
 export type OnboardingGroup = {
   key: string;
   title: string;
   description: string;
-  questions: readonly OnboardingQuestion[];
+  questions: OnboardingQuestion[];
+};
+
+export type OnboardingTemplateSchema = {
+  version: 1;
+  groups: OnboardingGroup[];
 };
 
 export type OnboardingDraftValue = string | string[];
 export type OnboardingDraft = Record<string, OnboardingDraftValue>;
 
-export const ONBOARDING_GROUPS: readonly OnboardingGroup[] = [
+type CustomSubmissionField = {
+  label: string;
+  value: OnboardingDraftValue;
+};
+
+const QUESTION_TYPE_SET = new Set<string>(ONBOARDING_QUESTION_TYPES);
+const TARGET_SET = new Set<string>(ONBOARDING_TARGETS);
+
+export const ONBOARDING_GROUPS: OnboardingGroup[] = [
   {
     key: "business-basics",
     title: "Business basics",
@@ -141,10 +161,210 @@ export const ONBOARDING_GROUPS: readonly OnboardingGroup[] = [
       { key: "additional_context", target: "knowledge_base", label: "Anything else we should know before we get started?", type: "long" },
     ],
   },
-] as const;
+];
 
-export function sanitizeOnboardingDraft(input: unknown): OnboardingDraft {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
+export const DEFAULT_ONBOARDING_TEMPLATE_SCHEMA: OnboardingTemplateSchema = {
+  version: 1,
+  groups: ONBOARDING_GROUPS,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizedString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function uniqueStrings(values: string[]) {
+  return values.filter((value, index) => values.indexOf(value) === index);
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return uniqueStrings(value.map((item) => normalizedString(item)).filter(Boolean));
+}
+
+function answerLength(value: OnboardingDraftValue) {
+  return Array.isArray(value) ? value.join("").length : value.length;
+}
+
+function isAnswerEmpty(value: OnboardingDraftValue) {
+  return Array.isArray(value) ? value.length === 0 : value.length === 0;
+}
+
+function answerToText(value: OnboardingDraftValue) {
+  return Array.isArray(value) ? value.join("\n") : value;
+}
+
+function slugifyKey(value: string, fallback: string) {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+  return slug || fallback;
+}
+
+function uniqueKey(base: string, seen: Set<string>) {
+  let candidate = base;
+  let counter = 2;
+
+  while (seen.has(candidate)) {
+    candidate = `${base}_${counter}`;
+    counter += 1;
+  }
+
+  seen.add(candidate);
+  return candidate;
+}
+
+function normalizeQuestionType(value: unknown): OnboardingQuestionType {
+  const type = normalizedString(value);
+  if (!QUESTION_TYPE_SET.has(type)) {
+    throw new Error(`Invalid onboarding question type: ${type || "missing"}.`);
+  }
+  return type as OnboardingQuestionType;
+}
+
+function normalizeQuestionTarget(value: unknown): OnboardingQuestionTarget {
+  const target = normalizedString(value);
+  if (!target) return "none";
+  if (!TARGET_SET.has(target)) {
+    throw new Error(`Invalid onboarding question target: ${target}.`);
+  }
+  return target as OnboardingQuestionTarget;
+}
+
+export function cloneOnboardingTemplateSchema(schema: OnboardingTemplateSchema) {
+  return JSON.parse(JSON.stringify(schema)) as OnboardingTemplateSchema;
+}
+
+export function createBlankOnboardingTemplateSchema(): OnboardingTemplateSchema {
+  return {
+    version: 1,
+    groups: [],
+  };
+}
+
+export function listOnboardingQuestions(schema: OnboardingTemplateSchema) {
+  return schema.groups.flatMap((group) => group.questions);
+}
+
+export function onboardingTemplateSchemaOrDefault(input: unknown) {
+  try {
+    return sanitizeOnboardingTemplateSchema(input);
+  } catch {
+    return cloneOnboardingTemplateSchema(DEFAULT_ONBOARDING_TEMPLATE_SCHEMA);
+  }
+}
+
+export function sanitizeOnboardingTemplateSchema(input: unknown): OnboardingTemplateSchema {
+  if (!isRecord(input)) {
+    throw new Error("Invalid onboarding template.");
+  }
+
+  const rawGroups = Array.isArray(input.groups) ? input.groups : [];
+  if (!rawGroups.length) {
+    throw new Error("Add at least one onboarding section.");
+  }
+  if (rawGroups.length > 24) {
+    throw new Error("Onboarding templates support up to 24 sections.");
+  }
+
+  const groupKeys = new Set<string>();
+  const questionKeys = new Set<string>();
+  let totalQuestions = 0;
+
+  const groups = rawGroups.map((rawGroup, groupIndex) => {
+    if (!isRecord(rawGroup)) {
+      throw new Error("Invalid onboarding section.");
+    }
+
+    const title = normalizedString(rawGroup.title);
+    if (!title) {
+      throw new Error(`Section ${groupIndex + 1} needs a title.`);
+    }
+    if (title.length > 120) {
+      throw new Error(`Section "${title}" is too long.`);
+    }
+
+    const description = normalizedString(rawGroup.description).slice(0, 500);
+    const questionsInput = Array.isArray(rawGroup.questions) ? rawGroup.questions : [];
+    if (!questionsInput.length) {
+      throw new Error(`Section "${title}" needs at least one question.`);
+    }
+
+    const key = uniqueKey(
+      slugifyKey(normalizedString(rawGroup.key) || title, `section_${groupIndex + 1}`),
+      groupKeys,
+    );
+
+    const questions = questionsInput.map((rawQuestion, questionIndex) => {
+      if (!isRecord(rawQuestion)) {
+        throw new Error(`Section "${title}" contains an invalid question.`);
+      }
+
+      const label = normalizedString(rawQuestion.label);
+      if (!label) {
+        throw new Error(`Question ${questionIndex + 1} in "${title}" needs a label.`);
+      }
+      if (label.length > 200) {
+        throw new Error(`Question "${label}" is too long.`);
+      }
+
+      const type = normalizeQuestionType(rawQuestion.type);
+      const target = normalizeQuestionTarget(rawQuestion.target);
+      const placeholder = normalizedString(rawQuestion.placeholder).slice(0, 500) || undefined;
+      const required = Boolean(rawQuestion.required);
+      const keyBase = normalizedString(rawQuestion.key) || label;
+      const questionKey = uniqueKey(
+        slugifyKey(keyBase, `question_${groupIndex + 1}_${questionIndex + 1}`),
+        questionKeys,
+      );
+      const options = type === "choice" || type === "multi"
+        ? stringArray(rawQuestion.options).slice(0, 50)
+        : undefined;
+
+      if ((type === "choice" || type === "multi") && (!options || options.length === 0)) {
+        throw new Error(`Question "${label}" needs at least one option.`);
+      }
+
+      totalQuestions += 1;
+      if (totalQuestions > 250) {
+        throw new Error("Onboarding templates support up to 250 questions.");
+      }
+
+      return {
+        key: questionKey,
+        target,
+        label,
+        type,
+        required,
+        placeholder,
+        options,
+      } satisfies OnboardingQuestion;
+    });
+
+    return {
+      key,
+      title,
+      description,
+      questions,
+    } satisfies OnboardingGroup;
+  });
+
+  return {
+    version: 1,
+    groups,
+  };
+}
+
+export function sanitizeOnboardingDraft(
+  input: unknown,
+  schema: OnboardingTemplateSchema = DEFAULT_ONBOARDING_TEMPLATE_SCHEMA,
+): OnboardingDraft {
+  if (!isRecord(input)) {
     throw new Error("Invalid onboarding draft.");
   }
 
@@ -152,58 +372,127 @@ export function sanitizeOnboardingDraft(input: unknown): OnboardingDraft {
   const draft: OnboardingDraft = {};
   let totalLength = 0;
 
-  for (const group of ONBOARDING_GROUPS) {
-    for (const question of group.questions) {
-      const rawValue = source[question.key];
-      const value = question.type === "multi"
-        ? Array.isArray(rawValue)
-          ? rawValue
-            .filter((item): item is string => typeof item === "string")
-            .filter((item) => question.options?.includes(item))
-          : []
-        : typeof rawValue === "string"
-          ? rawValue
-          : "";
-      const length = Array.isArray(value) ? value.join("").length : value.length;
-      if (length > 50_000) throw new Error(`Answer is too long: ${question.label}`);
-      totalLength += length;
-      draft[question.key] = value;
-    }
+  for (const question of listOnboardingQuestions(schema)) {
+    const rawValue = source[question.key];
+    const value = question.type === "multi"
+      ? Array.isArray(rawValue)
+        ? rawValue
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.trim())
+          .filter((item) => question.options?.includes(item))
+        : []
+      : typeof rawValue === "string"
+        ? question.type === "choice" && question.options?.length
+          ? question.options.includes(rawValue) ? rawValue : ""
+          : rawValue
+        : "";
+
+    const length = answerLength(value);
+    if (length > 50_000) throw new Error(`Answer is too long: ${question.label}`);
+    totalLength += length;
+    draft[question.key] = value;
   }
 
   if (totalLength > 500_000) throw new Error("Onboarding draft is too large.");
   return draft;
 }
 
-export function buildOnboardingSubmission(formData: FormData) {
+function formatKnowledgeBaseEntries(entries: Array<{ label: string; value: OnboardingDraftValue }>) {
+  if (!entries.length) return "";
+  if (entries.length === 1) return answerToText(entries[0].value).trim();
+
+  return entries
+    .map((entry) => `### ${entry.label}\n\n${answerToText(entry.value).trim()}`)
+    .join("\n\n")
+    .trim();
+}
+
+export function formatOnboardingCustomFields(customFields: unknown) {
+  if (!isRecord(customFields)) return "";
+
+  const entries = Object.values(customFields).flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const label = normalizedString(entry.label);
+    const rawValue = entry.value;
+    const value = Array.isArray(rawValue)
+      ? rawValue.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+      : typeof rawValue === "string"
+        ? rawValue.trim()
+        : "";
+
+    if (!label || isAnswerEmpty(value)) return [];
+    return [{ label, value }] satisfies CustomSubmissionField[];
+  });
+
+  if (!entries.length) return "";
+
+  return [
+    "## Custom onboarding answers",
+    "",
+    ...entries.flatMap((entry) => [
+      `### ${entry.label}`,
+      "",
+      answerToText(entry.value).trim(),
+      "",
+    ]),
+  ].join("\n").trim();
+}
+
+export function buildOnboardingSubmission(
+  formData: FormData,
+  schema: OnboardingTemplateSchema = DEFAULT_ONBOARDING_TEMPLATE_SCHEMA,
+) {
   const submission: Record<string, unknown> = Object.fromEntries(
     DOSSIER_SECTIONS.map((section) => [section, {}]),
   );
-  let knowledgeBase = "";
+  const knowledgeBaseEntries: Array<{ label: string; value: OnboardingDraftValue }> = [];
+  const customFields: Record<string, CustomSubmissionField> = {};
   let totalLength = 0;
 
-  for (const group of ONBOARDING_GROUPS) {
-    for (const question of group.questions) {
-      const value = question.type === "multi"
-        ? formData.getAll(question.key)
-          .map((item) => String(item).trim())
-          .filter((item) => question.options?.includes(item))
-        : String(formData.get(question.key) ?? "").trim();
-      const length = Array.isArray(value) ? value.join("").length : value.length;
-      if (length > 50_000) throw new Error(`Answer is too long: ${question.label}`);
-      if (question.required && (Array.isArray(value) ? !value.length : !value)) {
-        throw new Error(`Required answer missing: ${question.label}`);
-      }
-      totalLength += length;
+  for (const question of listOnboardingQuestions(schema)) {
+    const value = question.type === "multi"
+      ? formData.getAll(question.key)
+        .map((item) => String(item).trim())
+        .filter((item) => question.options?.includes(item))
+      : (() => {
+        const raw = String(formData.get(question.key) ?? "").trim();
+        if (question.type === "choice" && question.options?.length) {
+          return question.options.includes(raw) ? raw : "";
+        }
+        return raw;
+      })();
 
-      if (question.target === "knowledge_base") {
-        knowledgeBase = Array.isArray(value) ? value.join(", ") : value;
-      } else {
-        (submission[question.target] as Record<string, unknown>)[question.key] = value;
-      }
+    const length = answerLength(value);
+    if (length > 50_000) throw new Error(`Answer is too long: ${question.label}`);
+    if (question.required && isAnswerEmpty(value)) {
+      throw new Error(`Required answer missing: ${question.label}`);
     }
+
+    totalLength += length;
+    if (isAnswerEmpty(value)) continue;
+
+    if (question.target === "knowledge_base") {
+      knowledgeBaseEntries.push({ label: question.label, value });
+      continue;
+    }
+
+    if (question.target === "none") {
+      customFields[question.key] = {
+        label: question.label,
+        value,
+      };
+      continue;
+    }
+
+    (submission[question.target] as Record<string, unknown>)[question.key] = value;
   }
+
   if (totalLength > 500_000) throw new Error("Onboarding submission is too large.");
-  submission.knowledge_base = knowledgeBase;
+
+  submission.knowledge_base = formatKnowledgeBaseEntries(knowledgeBaseEntries);
+  if (Object.keys(customFields).length > 0) {
+    submission.custom_fields = customFields;
+  }
+
   return submission;
 }

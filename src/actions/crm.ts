@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logActivity } from "@/lib/activity";
-import { requireAgency, requireClient } from "@/lib/auth";
+import { type AgencyContext, requireAgency, requireClient } from "@/lib/auth";
 import { signTaskAttachments } from "@/lib/comment-attachments";
 import { DOSSIER_SECTIONS, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 import {
@@ -13,6 +13,12 @@ import {
   dossierSectionNotesFieldName,
   dossierSectionPreservedFieldName,
 } from "@/lib/dossier";
+import {
+  DEFAULT_ONBOARDING_TEMPLATE_NAME,
+  DEFAULT_ONBOARDING_TEMPLATE_SCHEMA,
+  formatOnboardingCustomFields,
+  onboardingTemplateSchemaOrDefault,
+} from "@/lib/onboarding";
 import { ensureTaskWatchers, findMentionedMemberIds, notifyTaskAudience } from "@/lib/notifications";
 import { advanceRecurringDate, moveToWeekday, recurringOccurrence } from "@/lib/recurrence";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,6 +42,20 @@ function requireClientLifecycleAdmin(role: string) {
   if (role !== "owner" && role !== "admin") {
     throw new Error("Only agency owners and admins can archive, restore, or delete clients.");
   }
+}
+
+function ensureTaskRemovalAllowed({
+  role,
+  createdBy,
+  userId,
+}: {
+  role: "owner" | "admin" | "member";
+  createdBy: string | null;
+  userId: string;
+}) {
+  if (role === "owner" || role === "admin") return;
+  if (createdBy && createdBy === userId) return;
+  throw new Error("Members can only remove tasks they created.");
 }
 
 const attachmentSchema = z.object({
@@ -382,7 +402,7 @@ async function validateTaskRelations(
   if (parentTaskId) {
     const { data } = await context.supabase
       .from("tasks")
-      .select("id")
+      .select("id, source_recurring_rule_id")
       .eq("id", parentTaskId)
       .eq("client_id", context.client.id)
       .eq("agency_id", context.agency.id)
@@ -390,6 +410,9 @@ async function validateTaskRelations(
       .neq("status", "complete")
       .maybeSingle();
     if (!data) throw new Error("Parent task must be open and active.");
+    if (data.source_recurring_rule_id) {
+      throw new Error("Recurring tasks cannot have subtasks yet.");
+    }
   }
 }
 
@@ -434,6 +457,116 @@ async function moveTaskTreeToList(
   const movedTasks = (data ?? []) as Array<{ id: string; title: string }>;
   if (!movedTasks.some((task) => task.id === taskId)) throw new Error("Task not found.");
   return movedTasks;
+}
+
+type RecurringRuleSummary = {
+  id: string;
+  generation_mode: "generate_task" | "reset_task";
+  active: boolean;
+};
+
+const recurringCompletionResultSchema = z.object({
+  run_id: z.string().uuid(),
+  task_id: z.string().uuid(),
+  title: z.string(),
+  task_list_id: z.string().uuid().nullable(),
+  completed_at: z.string(),
+  next_start_date: z.string().date(),
+  next_due_date: z.string().date(),
+  next_run_at: z.string().date(),
+});
+
+async function getRecurringRuleSummary(
+  context: AgencyContext,
+  clientId: string,
+  ruleId: string | null | undefined,
+) {
+  if (!ruleId) return null;
+  const { data, error } = await context.supabase
+    .from("recurring_task_rules")
+    .select("id, generation_mode, active")
+    .eq("id", ruleId)
+    .eq("agency_id", context.agency.id)
+    .eq("client_id", clientId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data ?? null) as RecurringRuleSummary | null;
+}
+
+async function syncRecurringRuleFields(
+  context: AgencyContext,
+  clientId: string,
+  ruleId: string | null | undefined,
+  values: Partial<{
+    title: string;
+    description: string | null;
+    priority: string;
+    assignee_id: string | null;
+    task_list_id: string;
+  }>,
+) {
+  if (!ruleId) return;
+  if (!Object.keys(values).length) return;
+
+  const { error } = await context.supabase
+    .from("recurring_task_rules")
+    .update(values)
+    .eq("id", ruleId)
+    .eq("agency_id", context.agency.id)
+    .eq("client_id", clientId);
+  if (error) throw new Error(error.message);
+}
+
+async function pauseResetStyleRecurringRule(
+  context: AgencyContext,
+  clientId: string,
+  ruleId: string | null | undefined,
+) {
+  const rule = await getRecurringRuleSummary(context, clientId, ruleId);
+  if (!rule || rule.generation_mode !== "reset_task") return;
+
+  const { error } = await context.supabase
+    .from("recurring_task_rules")
+    .update({ active: false })
+    .eq("id", rule.id)
+    .eq("agency_id", context.agency.id)
+    .eq("client_id", clientId);
+  if (error) throw new Error(error.message);
+}
+
+async function completeResetStyleRecurringTask(
+  context: AgencyContext,
+  clientId: string,
+  taskId: string,
+) {
+  const { data, error } = await context.supabase.rpc("complete_recurring_task_run", {
+    target_agency_id: context.agency.id,
+    target_client_id: clientId,
+    target_task_id: taskId,
+    actor_user_id: context.user.id,
+  });
+  if (error) throw new Error(error.message);
+
+  const result = recurringCompletionResultSchema.parse(data);
+  await logActivity(context.supabase, {
+    agencyId: context.agency.id,
+    actorId: context.user.id,
+    clientId,
+    action: "recurring_task.completed",
+    entityType: "task",
+    entityId: taskId,
+    metadata: {
+      recurring_run_id: result.run_id,
+      completed_at: result.completed_at,
+      next_start_date: result.next_start_date,
+      next_due_date: result.next_due_date,
+      next_run_at: result.next_run_at,
+    },
+  });
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/my-work");
+  revalidatePath("/team");
+  return result;
 }
 
 export async function createTask(formData: FormData) {
@@ -489,14 +622,21 @@ export async function updateTask(formData: FormData) {
   const taskListId = optional(formData, "task_list_id") ?? await defaultTaskListId(context);
   const parentTaskId = optional(formData, "parent_task_id");
   const nextStatus = z.enum(TASK_STATUSES).parse(formData.get("status"));
+  const nextTitle = z.string().trim().min(1).parse(formData.get("title"));
+  const nextDescription = normalizeNullableTaskDescription(optional(formData, "description"));
+  const nextPriority = z.enum(TASK_PRIORITIES).parse(formData.get("priority"));
+  const nextAssigneeId = optional(formData, "assignee_id");
+  const nextStartDate = optional(formData, "start_date");
+  const nextDueDate = optional(formData, "due_date");
   const { data: currentTask } = await context.supabase
     .from("tasks")
-    .select("id, title, status, parent_task_id, task_list_id")
+    .select("id, title, status, parent_task_id, task_list_id, source_recurring_rule_id")
     .eq("id", taskId)
     .eq("client_id", clientId)
     .eq("agency_id", context.agency.id)
     .maybeSingle();
   if (!currentTask) throw new Error("Task not found.");
+  const recurringRule = await getRecurringRuleSummary(context, clientId, currentTask.source_recurring_rule_id);
   await validateTaskRelations(
     context,
     taskListId,
@@ -509,23 +649,66 @@ export async function updateTask(formData: FormData) {
     ? await moveTaskTreeToList(context, taskId, taskListId)
     : [];
 
+  if (
+    nextStatus === "complete"
+    && currentTask.status !== "complete"
+    && recurringRule?.generation_mode === "reset_task"
+  ) {
+    const { error: taskError } = await context.supabase
+      .from("tasks")
+      .update({
+        title: nextTitle,
+        description: nextDescription,
+        priority: nextPriority,
+        assignee_id: nextAssigneeId,
+        task_list_id: taskListId,
+        parent_task_id: parentTaskId,
+        start_date: nextStartDate,
+        due_date: nextDueDate,
+      })
+      .eq("id", taskId)
+      .eq("client_id", clientId)
+      .eq("agency_id", context.agency.id);
+    if (taskError) throw new Error(taskError.message);
+
+    await syncRecurringRuleFields(context, clientId, currentTask.source_recurring_rule_id, {
+      title: nextTitle,
+      description: nextDescription,
+      priority: nextPriority,
+      assignee_id: nextAssigneeId,
+      task_list_id: taskListId,
+    });
+
+    await completeResetStyleRecurringTask(context, clientId, taskId);
+    revalidatePath("/inbox");
+    return;
+  }
+
   const { error } = await context.supabase
     .from("tasks")
     .update({
-      title: z.string().trim().min(1).parse(formData.get("title")),
-      description: normalizeNullableTaskDescription(optional(formData, "description")),
+      title: nextTitle,
+      description: nextDescription,
       status: nextStatus,
-      priority: z.enum(TASK_PRIORITIES).parse(formData.get("priority")),
-      assignee_id: optional(formData, "assignee_id"),
+      priority: nextPriority,
+      assignee_id: nextAssigneeId,
       task_list_id: taskListId,
       parent_task_id: parentTaskId,
-      start_date: optional(formData, "start_date"),
-      due_date: optional(formData, "due_date"),
+      start_date: nextStartDate,
+      due_date: nextDueDate,
     })
     .eq("id", taskId)
     .eq("client_id", clientId)
     .eq("agency_id", context.agency.id);
   if (error) throw new Error(error.message);
+
+  await syncRecurringRuleFields(context, clientId, currentTask.source_recurring_rule_id, {
+    title: nextTitle,
+    description: nextDescription,
+    priority: nextPriority,
+    assignee_id: nextAssigneeId,
+    task_list_id: taskListId,
+  });
 
   await logActivity(context.supabase, {
     agencyId: context.agency.id,
@@ -576,12 +759,13 @@ export async function updateTaskField(formData: FormData) {
   let value: string | null = rawValue;
   const { data: previousTask } = await context.supabase
     .from("tasks")
-    .select("id, title, status")
+    .select("id, title, status, source_recurring_rule_id")
     .eq("id", taskId)
     .eq("client_id", clientId)
     .eq("agency_id", context.agency.id)
     .maybeSingle();
   if (!previousTask) throw new Error("Task not found.");
+  const recurringRule = await getRecurringRuleSummary(context, clientId, previousTask.source_recurring_rule_id);
 
   if (field === "title") value = z.string().trim().min(1).max(500).parse(rawValue);
   if (field === "description") value = rawValue
@@ -610,6 +794,15 @@ export async function updateTaskField(formData: FormData) {
     if (!member) throw new Error("Invalid assignee.");
   }
 
+  if (
+    field === "status"
+    && value === "complete"
+    && previousTask.status !== "complete"
+    && recurringRule?.generation_mode === "reset_task"
+  ) {
+    return completeResetStyleRecurringTask(context, clientId, taskId);
+  }
+
   let updatedTask: { id: string; title: string } | null = null;
   let movedDescendantCount = 0;
   if (field === "task_list_id") {
@@ -630,6 +823,20 @@ export async function updateTaskField(formData: FormData) {
     updatedTask = data;
   }
   if (!updatedTask) throw new Error("Task not found.");
+
+  if (previousTask.source_recurring_rule_id) {
+    if (field === "title") {
+      await syncRecurringRuleFields(context, clientId, previousTask.source_recurring_rule_id, { title: value ?? previousTask.title });
+    } else if (field === "description") {
+      await syncRecurringRuleFields(context, clientId, previousTask.source_recurring_rule_id, { description: value });
+    } else if (field === "priority" && value) {
+      await syncRecurringRuleFields(context, clientId, previousTask.source_recurring_rule_id, { priority: value });
+    } else if (field === "assignee_id") {
+      await syncRecurringRuleFields(context, clientId, previousTask.source_recurring_rule_id, { assignee_id: value });
+    } else if (field === "task_list_id" && value) {
+      await syncRecurringRuleFields(context, clientId, previousTask.source_recurring_rule_id, { task_list_id: value });
+    }
+  }
 
   await logActivity(context.supabase, {
     agencyId: context.agency.id,
@@ -814,6 +1021,7 @@ export async function setTaskRecurrence(input: unknown) {
     next_run_at: nextRunAt,
     due_offset_days: dueOffsetDays,
     skip_weekends: parsed.skipWeekends,
+    generation_mode: "reset_task" as const,
     active: true,
   };
 
@@ -821,7 +1029,7 @@ export async function setTaskRecurrence(input: unknown) {
   const { data: previousRule, error: previousRuleError } = ruleId
     ? await context.supabase
       .from("recurring_task_rules")
-      .select("task_list_id, title, description, priority, assignee_id, frequency, interval_count, next_run_at, due_offset_days, skip_weekends, active")
+      .select("task_list_id, title, description, priority, assignee_id, frequency, interval_count, next_run_at, due_offset_days, skip_weekends, generation_mode, active")
       .eq("id", ruleId)
       .eq("agency_id", context.agency.id)
       .eq("client_id", parsed.clientId)
@@ -829,6 +1037,22 @@ export async function setTaskRecurrence(input: unknown) {
     : { data: null, error: null };
   if (previousRuleError) throw new Error(previousRuleError.message);
   if (ruleId && !previousRule) throw new Error("Recurring rule not found.");
+
+  if (ruleId && previousRule?.generation_mode === "generate_task") {
+    const { count: siblingCount, error: siblingError } = await context.supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("agency_id", context.agency.id)
+      .eq("client_id", parsed.clientId)
+      .eq("source_recurring_rule_id", ruleId)
+      .neq("id", parsed.taskId)
+      .neq("status", "complete")
+      .is("archived_at", null);
+    if (siblingError) throw new Error(siblingError.message);
+    if (siblingCount) {
+      throw new Error("This recurring task still uses legacy generated occurrences. Stop it and create a fresh recurring task to switch models.");
+    }
+  }
 
   if (ruleId) {
     const { data: rule, error } = await context.supabase
@@ -991,7 +1215,7 @@ export async function bulkUpdateTasks(input: unknown) {
   const context = await requireAgency();
   const { data: tasks, error: tasksError } = await context.supabase
     .from("tasks")
-    .select("id, client_id, title, archived_at")
+    .select("id, client_id, title, status, source_recurring_rule_id, archived_at")
     .eq("agency_id", context.agency.id)
     .in("id", taskIds);
   if (tasksError) throw new Error(tasksError.message);
@@ -1033,15 +1257,62 @@ export async function bulkUpdateTasks(input: unknown) {
     affectedTaskCount = archivedTaskIds.size;
   } else {
     const field = parsed.action === "assignee" ? "assignee_id" : parsed.action;
-    const { data: updatedTasks, error } = await context.supabase
-      .from("tasks")
-      .update({ [field]: value })
-      .eq("agency_id", context.agency.id)
-      .is("archived_at", null)
-      .in("id", taskIds)
-      .select("id");
-    if (error) throw new Error(error.message);
-    if (updatedTasks?.length !== taskIds.length) throw new Error("One or more selected tasks could not be updated.");
+    if (parsed.action === "status" && value === "complete") {
+      const recurringRuleIds = [...new Set(tasks.flatMap((task) => task.source_recurring_rule_id ? [task.source_recurring_rule_id] : []))];
+      const { data: recurringRules, error: recurringRulesError } = recurringRuleIds.length
+        ? await context.supabase
+          .from("recurring_task_rules")
+          .select("id, generation_mode")
+          .eq("agency_id", context.agency.id)
+          .in("id", recurringRuleIds)
+        : { data: [], error: null };
+      if (recurringRulesError) throw new Error(recurringRulesError.message);
+      const recurringModes = new Map((recurringRules ?? []).map((rule) => [rule.id, rule.generation_mode]));
+
+      const resetRecurringTasks = tasks.filter((task) =>
+        task.status !== "complete"
+        && task.source_recurring_rule_id
+        && recurringModes.get(task.source_recurring_rule_id) === "reset_task",
+      );
+      const standardTaskIds = tasks
+        .filter((task) => !resetRecurringTasks.some((candidate) => candidate.id === task.id))
+        .map((task) => task.id);
+
+      if (standardTaskIds.length) {
+        const { data: updatedTasks, error } = await context.supabase
+          .from("tasks")
+          .update({ [field]: value })
+          .eq("agency_id", context.agency.id)
+          .is("archived_at", null)
+          .in("id", standardTaskIds)
+          .select("id");
+        if (error) throw new Error(error.message);
+        if (updatedTasks?.length !== standardTaskIds.length) throw new Error("One or more selected tasks could not be updated.");
+      }
+
+      for (const task of resetRecurringTasks) {
+        const taskContext = await requireClient(task.client_id);
+        await completeResetStyleRecurringTask(taskContext, task.client_id, task.id);
+      }
+    } else {
+      const { data: updatedTasks, error } = await context.supabase
+        .from("tasks")
+        .update({ [field]: value })
+        .eq("agency_id", context.agency.id)
+        .is("archived_at", null)
+        .in("id", taskIds)
+        .select("id");
+      if (error) throw new Error(error.message);
+      if (updatedTasks?.length !== taskIds.length) throw new Error("One or more selected tasks could not be updated.");
+    }
+  }
+
+  if (parsed.action === "priority" || parsed.action === "assignee") {
+    for (const task of tasks) {
+      await syncRecurringRuleFields(context, task.client_id, task.source_recurring_rule_id, parsed.action === "priority"
+        ? { priority: value ?? "normal" }
+        : { assignee_id: value });
+    }
   }
 
   const taskIdsByClient = new Map<string, string[]>();
@@ -1073,7 +1344,7 @@ export async function createSubtask(formData: FormData) {
   const context = await requireClient(clientId);
   const { data: parent } = await context.supabase
     .from("tasks")
-    .select("id, task_list_id, title")
+    .select("id, task_list_id, title, source_recurring_rule_id")
     .eq("id", parentTaskId)
     .eq("client_id", clientId)
     .eq("agency_id", context.agency.id)
@@ -1081,6 +1352,7 @@ export async function createSubtask(formData: FormData) {
     .neq("status", "complete")
     .maybeSingle();
   if (!parent) throw new Error("Parent task must be open and active.");
+  if (parent.source_recurring_rule_id) throw new Error("Recurring tasks cannot have subtasks yet.");
 
   const assigneeId = optional(formData, "assignee_id");
   if (assigneeId) {
@@ -1148,7 +1420,7 @@ export async function archiveTask(formData: FormData) {
   const context = await requireClient(clientId);
   const { data: rootTask, error: rootTaskError } = await context.supabase
     .from("tasks")
-    .select("id, title, archived_at")
+    .select("id, title, archived_at, created_by, source_recurring_rule_id")
     .eq("id", taskId)
     .eq("client_id", clientId)
     .eq("agency_id", context.agency.id)
@@ -1156,6 +1428,11 @@ export async function archiveTask(formData: FormData) {
   if (rootTaskError) throw new Error(rootTaskError.message);
   if (!rootTask) throw new Error("Task not found.");
   if (rootTask.archived_at) throw new Error("Task is already archived.");
+  ensureTaskRemovalAllowed({
+    role: context.membership.role,
+    createdBy: rootTask.created_by,
+    userId: context.user.id,
+  });
 
   const { data, error } = await context.supabase.rpc("archive_task_tree", {
     target_agency_id: context.agency.id,
@@ -1166,6 +1443,7 @@ export async function archiveTask(formData: FormData) {
   if (error) throw new Error(error.message);
   const archivedTasks = (data ?? []) as Array<{ id: string; title: string }>;
   if (!archivedTasks.some((task) => task.id === taskId)) throw new Error("Task could not be archived.");
+  await pauseResetStyleRecurringRule(context, clientId, rootTask.source_recurring_rule_id);
   await logActivity(context.supabase, {
     agencyId: context.agency.id,
     actorId: context.user.id,
@@ -1233,12 +1511,17 @@ export async function deleteTask(formData: FormData) {
 
   const { data: task } = await context.supabase
     .from("tasks")
-    .select("id, task_comments(task_comment_attachments(storage_path))")
+    .select("id, created_by, source_recurring_rule_id, task_comments(task_comment_attachments(storage_path))")
     .eq("id", taskId)
     .eq("client_id", clientId)
     .eq("agency_id", context.agency.id)
     .maybeSingle();
   if (!task) throw new Error("Task not found.");
+  ensureTaskRemovalAllowed({
+    role: context.membership.role,
+    createdBy: task.created_by,
+    userId: context.user.id,
+  });
 
   const comments = task.task_comments as unknown as Array<{
     task_comment_attachments: Array<{ storage_path: string }>;
@@ -1247,6 +1530,7 @@ export async function deleteTask(formData: FormData) {
     (comment.task_comment_attachments ?? []).map((attachment) => attachment.storage_path),
   );
   if (paths.length) await createAdminClient().storage.from("comment-attachments").remove(paths);
+  await pauseResetStyleRecurringRule(context, clientId, task.source_recurring_rule_id);
 
   const { error } = await context.supabase
     .from("tasks")
@@ -1473,6 +1757,7 @@ export async function createRecurringRule(formData: FormData) {
       next_run_at: nextRunAt,
       due_offset_days: dueOffsetDays,
       skip_weekends: skipWeekends,
+      generation_mode: "reset_task",
       created_by: context.user.id,
     })
     .select("id")
@@ -1531,12 +1816,51 @@ export async function createRecurringRule(formData: FormData) {
 
 export async function generateOnboardingLink(formData: FormData) {
   const clientId = String(formData.get("client_id"));
+  const requestedTemplateIdRaw = String(formData.get("template_id") ?? "").trim();
+  const requestedTemplateId = requestedTemplateIdRaw
+    ? z.string().uuid().parse(requestedTemplateIdRaw)
+    : "";
   const context = await requireClient(clientId);
+  let templateId: string | null = null;
+  let templateName = DEFAULT_ONBOARDING_TEMPLATE_NAME;
+  let templateSchema = DEFAULT_ONBOARDING_TEMPLATE_SCHEMA;
+
+  if (requestedTemplateId) {
+    const { data: template, error: templateError } = await context.supabase
+      .from("onboarding_templates")
+      .select("id, name, schema")
+      .eq("id", requestedTemplateId)
+      .eq("agency_id", context.agency.id)
+      .maybeSingle();
+    if (templateError) throw new Error(templateError.message);
+    if (!template) throw new Error("Onboarding template not found.");
+
+    templateId = template.id;
+    templateName = template.name;
+    templateSchema = onboardingTemplateSchemaOrDefault(template.schema);
+  } else {
+    const { data: defaultTemplate, error: defaultTemplateError } = await context.supabase
+      .from("onboarding_templates")
+      .select("id, name, schema")
+      .eq("agency_id", context.agency.id)
+      .eq("is_default", true)
+      .maybeSingle();
+    if (defaultTemplateError) throw new Error(defaultTemplateError.message);
+    if (defaultTemplate) {
+      templateId = defaultTemplate.id;
+      templateName = defaultTemplate.name;
+      templateSchema = onboardingTemplateSchemaOrDefault(defaultTemplate.schema);
+    }
+  }
+
   const { data, error } = await context.supabase
     .from("onboarding_links")
     .insert({
       agency_id: context.agency.id,
       client_id: clientId,
+      template_id: templateId,
+      template_name: templateName,
+      template_schema: templateSchema,
       created_by: context.user.id,
     })
     .select("id")
@@ -1549,6 +1873,7 @@ export async function generateOnboardingLink(formData: FormData) {
     action: "onboarding_link.created",
     entityType: "onboarding_link",
     entityId: data.id,
+    metadata: { template_name: templateName, template_id: templateId },
   });
   revalidatePath(`/clients/${clientId}`);
 }
@@ -1634,12 +1959,20 @@ export async function copyOnboardingToDossier(formData: FormData) {
     ]),
   );
   const incomingKnowledgeBase = typeof source.knowledge_base === "string" ? source.knowledge_base.trim() : "";
+  const customFieldsKnowledgeBase = formatOnboardingCustomFields(source.custom_fields);
+  const nextKnowledgeBase = incomingKnowledgeBase
+    ? [incomingKnowledgeBase, customFieldsKnowledgeBase].filter(Boolean).join("\n\n")
+    : customFieldsKnowledgeBase
+      ? [typeof existingDossier?.knowledge_base === "string" ? existingDossier.knowledge_base.trim() : "", customFieldsKnowledgeBase]
+        .filter(Boolean)
+        .join("\n\n")
+      : existingDossier?.knowledge_base || null;
   const { error } = await context.supabase.from("dossiers").upsert(
     {
       agency_id: context.agency.id,
       client_id: clientId,
       ...sectionValues,
-      knowledge_base: incomingKnowledgeBase || existingDossier?.knowledge_base || null,
+      knowledge_base: nextKnowledgeBase,
       ai_summary: existingDossier?.ai_summary || null,
     },
     { onConflict: "client_id" },

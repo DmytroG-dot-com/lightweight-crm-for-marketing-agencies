@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type Ref } from "react";
 import { getTaskDetail, updateTaskDates, updateTaskField } from "@/actions/crm";
 import { toggleTaskWatch } from "@/actions/inbox";
 import { CommentComposer } from "@/components/comment-composer";
@@ -54,6 +54,7 @@ export type TaskSummary = {
   title: string;
   status: string;
   priority: string;
+  created_by?: string | null;
   assignee_id: string | null;
   task_list_id: string | null;
   parent_task_id: string | null;
@@ -162,8 +163,10 @@ export function TaskDetailModal({
   creativeRequests = [],
   agencyId,
   currentUserId,
+  currentUserRole,
   timezone,
   initiallyOpen = false,
+  triggerRef,
 }: {
   task: TaskSummary;
   lists: List[];
@@ -172,8 +175,10 @@ export function TaskDetailModal({
   creativeRequests?: LinkedCreativeRequest[];
   agencyId: string;
   currentUserId: string;
+  currentUserRole: "owner" | "admin" | "member";
   timezone: string;
   initiallyOpen?: boolean;
+  triggerRef?: Ref<HTMLButtonElement>;
 }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<TaskDetail | null>(null);
@@ -275,6 +280,9 @@ export function TaskDetailModal({
     }] : []),
     ...selectableParents.map((candidate) => ({ value: candidate.id, label: candidate.title })),
   ];
+  const canManageTaskLifecycle = currentUserRole === "owner"
+    || currentUserRole === "admin"
+    || taskData.created_by === currentUserId;
 
   const listParamForTaskListId = useCallback((taskListId?: string | null) => {
     if (!taskListId) return "general";
@@ -419,9 +427,19 @@ export function TaskDetailModal({
     const request = (async () => {
       try {
         await updateTaskField(formData);
-        persistedValues.current = { ...persistedValues.current, [field]: value };
-        setDetail((current) => current ? { ...current, [field]: detailFieldValue(field, value) } : current);
-        if (field === "task_list_id") syncBrowserTaskUrl(task.id, value);
+        if (field === "status" && value === "complete" && task.source_recurring_rule_id) {
+          const nextTask = await loadDetail({ syncForm: true });
+          if (nextTask) {
+            const nextValues = editableValuesForTask(nextTask);
+            persistedValues.current = nextValues;
+            setValues(nextValues);
+            syncBrowserTaskUrl(task.id, nextValues.task_list_id || task.task_list_id);
+          }
+        } else {
+          persistedValues.current = { ...persistedValues.current, [field]: value };
+          setDetail((current) => current ? { ...current, [field]: detailFieldValue(field, value) } : current);
+          if (field === "task_list_id") syncBrowserTaskUrl(task.id, value);
+        }
         setMessage("Saved");
         return true;
       } catch (error) {
@@ -505,7 +523,7 @@ export function TaskDetailModal({
 
   return (
     <>
-      <button type="button" onClick={openTask} className="group block max-w-full text-left">
+      <button ref={triggerRef} type="button" onClick={openTask} className="group block max-w-full text-left">
         <span className="text-sm font-normal text-zinc-950 group-hover:text-blue-700 group-hover:underline">{task.title}</span>
       </button>
 
@@ -562,7 +580,13 @@ export function TaskDetailModal({
               <span className={`text-[9px] font-semibold uppercase tracking-[0.1em] ${message === "Saved" ? "text-emerald-600" : "text-red-600"}`}>
                 {pending ? "Saving..." : message}
               </span>
-              <TaskLifecycleActions clientId={task.client_id} taskId={task.id} />
+              <TaskLifecycleActions
+                clientId={task.client_id}
+                taskId={task.id}
+                taskTitle={values.title}
+                canArchive={canManageTaskLifecycle}
+                canDelete={canManageTaskLifecycle}
+              />
               <button type="button" onClick={() => void closeTask()} className="p-1 text-zinc-400 hover:text-zinc-950" aria-label="Close task">
                 <X className="size-5" />
               </button>

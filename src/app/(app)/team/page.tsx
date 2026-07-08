@@ -47,14 +47,22 @@ type DashboardMetrics = {
 };
 
 type CompletedTask = {
-  id: string;
+  record_id: string;
+  task_id: string;
   client_id: string;
-  task_list_id: string;
+  task_list_id: string | null;
   title: string;
   completed_at: string;
   completed_assignee_id: string | null;
   clients: { name: string } | null;
 };
+
+function normalizeJoinedClient<T extends { name: string }>(
+  value: T | T[] | null | undefined,
+): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
 
 type SavedReport = {
   id: string;
@@ -388,18 +396,54 @@ async function CompletedView({ context, members }: { context: AgencyContext; mem
   const nextWeekStart = new Date(thisWeekStart);
   nextWeekStart.setUTCDate(nextWeekStart.getUTCDate() + 7);
 
-  const { data, error } = await context.supabase
-    .from("tasks")
-    .select("id, client_id, task_list_id, title, completed_at, completed_assignee_id, clients!inner(name, status)")
-    .eq("agency_id", context.agency.id)
-    .eq("status", "complete")
-    .neq("clients.status", "archived")
-    .is("archived_at", null)
-    .gte("completed_at", lastWeekStart.toISOString())
-    .lt("completed_at", nextWeekStart.toISOString())
-    .order("completed_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  const tasks = (data ?? []) as unknown as CompletedTask[];
+  const [
+    { data: completedTasks, error: completedTasksError },
+    { data: completedRuns, error: completedRunsError },
+  ] = await Promise.all([
+    context.supabase
+      .from("tasks")
+      .select("id, client_id, task_list_id, title, completed_at, completed_assignee_id, clients!inner(name, status)")
+      .eq("agency_id", context.agency.id)
+      .eq("status", "complete")
+      .neq("clients.status", "archived")
+      .is("archived_at", null)
+      .gte("completed_at", lastWeekStart.toISOString())
+      .lt("completed_at", nextWeekStart.toISOString())
+      .order("completed_at", { ascending: false }),
+    context.supabase
+      .from("recurring_task_runs")
+      .select("id, task_id, client_id, task_list_id, title, completed_at, completed_assignee_id, clients!inner(name, status)")
+      .eq("agency_id", context.agency.id)
+      .neq("clients.status", "archived")
+      .gte("completed_at", lastWeekStart.toISOString())
+      .lt("completed_at", nextWeekStart.toISOString())
+      .order("completed_at", { ascending: false }),
+  ]);
+  const queryError = completedTasksError || completedRunsError;
+  if (queryError) throw new Error(queryError.message);
+
+  const tasks: CompletedTask[] = [
+    ...(completedTasks ?? []).map((task) => ({
+      record_id: task.id,
+      task_id: task.id,
+      client_id: task.client_id,
+      task_list_id: task.task_list_id,
+      title: task.title,
+      completed_at: task.completed_at,
+      completed_assignee_id: task.completed_assignee_id,
+      clients: normalizeJoinedClient(task.clients),
+    })),
+    ...(completedRuns ?? []).map((run) => ({
+      record_id: run.id,
+      task_id: run.task_id,
+      client_id: run.client_id,
+      task_list_id: run.task_list_id,
+      title: run.title,
+      completed_at: run.completed_at,
+      completed_assignee_id: run.completed_assignee_id,
+      clients: normalizeJoinedClient(run.clients),
+    })),
+  ].sort((left, right) => new Date(right.completed_at).getTime() - new Date(left.completed_at).getTime());
   const unassigned = tasks.filter((task) => !task.completed_assignee_id);
 
   return (
@@ -450,6 +494,7 @@ function AssigneeTaskSection({
           members={members}
           agencyId={context.agency.id}
           currentUserId={context.user.id}
+          currentUserRole={context.membership.role}
           timezone={context.membership.timezone}
           showClient
         />
@@ -486,8 +531,8 @@ function CompletedPeriodList({ title, tasks, timezone }: { title: string; tasks:
       <div className="border-y bg-white">
         {tasks.length ? tasks.map((task) => (
           <Link
-            key={task.id}
-            href={`/clients/${task.client_id}?tab=tasks&list=${task.task_list_id}&task=${task.id}`}
+            key={task.record_id}
+            href={`/clients/${task.client_id}?tab=tasks&list=${task.task_list_id ?? "general"}&task=${task.task_id}`}
             className="flex items-start justify-between gap-4 border-b px-3 py-3 last:border-0 hover:bg-zinc-50"
           >
             <span className="min-w-0"><span className="block truncate text-sm font-medium">{task.title}</span><span className="mt-1 block text-[10px] uppercase tracking-[0.05em] text-zinc-400">{task.clients?.name ?? "Client"}</span></span>

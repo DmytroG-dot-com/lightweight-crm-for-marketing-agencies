@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { saveOnboardingDraft, submitOnboarding } from "@/actions/public";
 import {
-  ONBOARDING_GROUPS,
   type OnboardingDraft,
   type OnboardingQuestion,
+  type OnboardingTemplateSchema,
+  listOnboardingQuestions,
 } from "@/lib/onboarding";
 
 type DraftStatus = "ready" | "restored" | "local" | "saving" | "saved" | "error" | "submitting";
@@ -14,10 +15,10 @@ function hasAnswers(draft: OnboardingDraft) {
   return Object.values(draft).some((value) => Array.isArray(value) ? value.length > 0 : value.length > 0);
 }
 
-function serializeForm(form: HTMLFormElement): OnboardingDraft {
+function serializeForm(form: HTMLFormElement, schema: OnboardingTemplateSchema): OnboardingDraft {
   const formData = new FormData(form);
   return Object.fromEntries(
-    ONBOARDING_GROUPS.flatMap((group) => group.questions).map((question) => [
+    listOnboardingQuestions(schema).map((question) => [
       question.key,
       question.type === "multi"
         ? formData.getAll(question.key).map(String)
@@ -78,17 +79,22 @@ export function OnboardingForm({
   token,
   companyName,
   serverDraft,
+  schema,
 }: {
   token: string;
   companyName: string;
   serverDraft: OnboardingDraft;
+  schema: OnboardingTemplateSchema;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const schemaRef = useRef(schema);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
   const queuedDraftRef = useRef<OnboardingDraft | null>(null);
   const [status, setStatus] = useState<DraftStatus>(hasAnswers(serverDraft) ? "restored" : "ready");
   const storageKey = `onboarding-draft:${token}`;
+
+  schemaRef.current = schema;
 
   const flushServerDraft = useCallback(async function flushDraft() {
     if (savingRef.current || !queuedDraftRef.current) return;
@@ -145,14 +151,14 @@ export function OnboardingForm({
       ref={formRef}
       action={submitOnboarding}
       className="space-y-12"
-      onInput={(event) => queueDraft(serializeForm(event.currentTarget))}
+      onInput={(event) => queueDraft(serializeForm(event.currentTarget, schemaRef.current))}
       onSubmit={() => {
         setStatus("submitting");
         clearLocalDraft(storageKey);
       }}
     >
       <input type="hidden" name="token" value={token} />
-      {ONBOARDING_GROUPS.map((group, index) => (
+      {schema.groups.map((group, index) => (
         <section key={group.key}>
           <div className="mb-4 flex items-start gap-4 border-b border-zinc-950 pb-3">
             <span className="font-mono text-[10px] text-blue-700">{String(index + 1).padStart(2, "0")}</span>

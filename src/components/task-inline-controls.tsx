@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { updateTaskDates, updateTaskField } from "@/actions/crm";
 import { TaskDateRangePicker } from "@/components/task-date-range-picker";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
@@ -46,6 +46,10 @@ export function TaskStatusSelect({
 }) {
   const { error, pending, update } = useTaskFieldUpdate(clientId, taskId);
   const [value, setValue] = useState(status);
+
+  useEffect(() => {
+    setValue(status);
+  }, [status]);
 
   return (
     <select
@@ -103,6 +107,10 @@ function TaskDateInput({
   const [dates, setDates] = useState({ start: startDate ?? "", due: dueDate ?? "" });
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDates({ start: startDate ?? "", due: dueDate ?? "" });
+  }, [startDate, dueDate]);
 
   return (
     <div title={error ?? undefined}>

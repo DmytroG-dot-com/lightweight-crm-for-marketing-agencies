@@ -25,6 +25,11 @@ function compareText(a: string, b: string) {
   return a < b ? -1 : 1;
 }
 
+function isInteractiveTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("button, a, input, select, textarea, label, summary, [role='button']"));
+}
+
 export function TaskTable({
   tasks,
   lists,
@@ -32,6 +37,7 @@ export function TaskTable({
   taskReferences,
   agencyId,
   currentUserId,
+  currentUserRole,
   timezone,
   focusedTaskId,
   showClient = false,
@@ -44,6 +50,7 @@ export function TaskTable({
   taskReferences: TaskReference[];
   agencyId: string;
   currentUserId: string;
+  currentUserRole: "owner" | "admin" | "member";
   timezone: string;
   focusedTaskId?: string;
   showClient?: boolean;
@@ -54,6 +61,7 @@ export function TaskTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [completingIds, setCompletingIds] = useState<Set<string>>(() => new Set());
   const completionTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const taskTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const memberNames = useMemo(() => new Map(members.map((member) => [member.user_id, member.display_name || member.email || "Member"])), [members]);
   const sortedTasks = useMemo(() => {
     const priorityRank: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -184,7 +192,13 @@ export function TaskTable({
                     }}
                   />
                 </td>
-                <td className="px-4 py-4">
+                <td
+                  className="cursor-pointer px-4 py-4"
+                  onClick={(event) => {
+                    if (isInteractiveTarget(event.target)) return;
+                    taskTriggerRefs.current.get(task.id)?.click();
+                  }}
+                >
                   <TaskDetailModal
                     task={task}
                     lists={lists.filter((list) => !list.client_id || list.client_id === task.client_id)}
@@ -193,8 +207,13 @@ export function TaskTable({
                     creativeRequests={creativeRequests.filter((candidate) => candidate.client_id === task.client_id)}
                     agencyId={agencyId}
                     currentUserId={currentUserId}
+                    currentUserRole={currentUserRole}
                     timezone={timezone}
                     initiallyOpen={task.id === focusedTaskId}
+                    triggerRef={(node) => {
+                      if (node) taskTriggerRefs.current.set(task.id, node);
+                      else taskTriggerRefs.current.delete(task.id);
+                    }}
                   />
                   {task.parent_task_id && <ParentTaskLink task={task} taskReferences={taskReferences} />}
                 </td>

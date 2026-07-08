@@ -103,14 +103,35 @@ export function QuickTaskComposer({
     setQueue((current) => current.filter((item) => item.id !== id));
   }
 
+  function toggleAiParsing() {
+    if (!aiConfigured) return;
+    setUseAi((enabled) => !enabled);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
   const activeCount = queue.filter((item) => item.status === "queued" || item.status === "processing").length;
 
   return (
     <div className="border-y border-blue-600 bg-blue-50/40 py-4">
       <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-4">
-        <span className="col-start-1 row-start-2 grid size-8 shrink-0 place-items-center bg-violet-600 text-white sm:row-start-1">
-          <Sparkles className="size-4" strokeWidth={1.75} />
-        </span>
+        {aiConfigured ? (
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={toggleAiParsing}
+            aria-pressed={useAi}
+            title={useAi ? "Disable AI parsing and create entered text directly" : "Enable AI task parsing"}
+            className={`col-start-1 row-start-2 grid size-8 shrink-0 place-items-center text-white transition-colors sm:row-start-1 ${
+              useAi ? "bg-violet-600 hover:bg-violet-700" : "bg-zinc-400 hover:bg-zinc-500"
+            }`}
+          >
+            <Sparkles className="size-4" strokeWidth={1.75} />
+          </button>
+        ) : (
+          <span className="col-start-1 row-start-2 grid size-8 shrink-0 place-items-center bg-violet-600 text-white sm:row-start-1">
+            <Sparkles className="size-4" strokeWidth={1.75} />
+          </span>
+        )}
         <textarea
           ref={inputRef}
           rows={2}
@@ -137,12 +158,12 @@ export function QuickTaskComposer({
       </div>
       <div className="mt-3 flex flex-col items-start gap-2 text-[9px] font-semibold uppercase tracking-[0.1em] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <span className={activeCount ? "text-blue-700" : "text-zinc-400"}>
-          {activeCount ? `${activeCount} task${activeCount === 1 ? "" : "s"} processing one by one` : "Ready for tasks"}
+          {activeCount ? `${activeCount} task${activeCount === 1 ? "" : "s"} processing one by one` : ""}
         </span>
         {aiConfigured ? (
           <button
             type="button"
-            onClick={() => setUseAi((enabled) => !enabled)}
+            onClick={toggleAiParsing}
             className={`flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] ${useAi ? "text-violet-600 hover:text-violet-800" : "text-zinc-400 hover:text-zinc-700"}`}
             aria-pressed={useAi}
             title={useAi ? "Disable AI parsing and create entered text directly" : "Enable AI task parsing"}

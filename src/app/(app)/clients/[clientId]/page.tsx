@@ -13,6 +13,7 @@ import { ClientTabs } from "@/components/client-tabs";
 import { ClientLifecycleActions } from "@/components/client-lifecycle-actions";
 import { AutoFilterForm } from "@/components/auto-filter-form";
 import { DossierForm } from "@/components/dossier-form";
+import { DossierExportButton } from "@/components/dossier-export-button";
 import { EmptyState } from "@/components/empty-state";
 import { InlineTaskListCreator } from "@/components/inline-task-list-creator";
 import { PageHeader } from "@/components/page-header";
@@ -20,11 +21,14 @@ import { PersonaManager } from "@/components/persona-manager";
 import { QuickTaskComposer } from "@/components/quick-task-composer";
 import { RecurringScheduleManager } from "@/components/recurring-schedule-manager";
 import { StatusPill } from "@/components/status-pill";
+import { TaskCsvImporter } from "@/components/task-csv-importer";
+import { TaskTemplateControls } from "@/components/task-template-controls";
 import { TaskRestoreAction } from "@/components/task-restore-action";
 import { type List, type Member, type Task, TaskTable } from "@/components/task-table";
 import type { LinkedCreativeRequest, TaskReference } from "@/components/task-detail-modal";
 import { requireClient } from "@/lib/auth";
 import { getAgencyAiSettingsSummary } from "@/lib/ai/settings";
+import { DEFAULT_ONBOARDING_TEMPLATE_NAME } from "@/lib/onboarding";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 import { TASK_REFERENCE_SELECT, TASK_SUMMARY_SELECT } from "@/lib/task-selects";
 import { addDaysToDateValue, dateInputValue, formatDateTime, formatLabel } from "@/lib/utils";
@@ -130,6 +134,13 @@ export default async function ClientDetailPage({
       .eq("agency_id", context.agency.id)
       .eq("client_id", clientId)
     : Promise.resolve({ data: [], error: null });
+  const templatesQuery = tab === "tasks" && selectedList?.kind !== "recurring"
+    ? context.supabase
+      .from("task_templates")
+      .select("id, name, description")
+      .eq("agency_id", context.agency.id)
+      .order("name")
+    : Promise.resolve({ data: [], error: null });
   const dossierQuery = tab === "dossier"
     ? context.supabase.from("dossiers").select("*").eq("agency_id", context.agency.id).eq("client_id", clientId).maybeSingle()
     : Promise.resolve({ data: null, error: null });
@@ -148,6 +159,14 @@ export default async function ClientDetailPage({
   const linksQuery = tab === "onboarding"
     ? context.supabase.from("onboarding_links").select("*").eq("agency_id", context.agency.id).eq("client_id", clientId).order("created_at", { ascending: false })
     : Promise.resolve({ data: [], error: null });
+  const onboardingTemplatesQuery = tab === "onboarding"
+    ? context.supabase
+      .from("onboarding_templates")
+      .select("id, name, is_default")
+      .eq("agency_id", context.agency.id)
+      .order("is_default", { ascending: false })
+      .order("created_at")
+    : Promise.resolve({ data: [], error: null });
   const submissionsQuery = tab === "onboarding"
     ? context.supabase.from("onboarding_submissions").select("*").eq("agency_id", context.agency.id).eq("client_id", clientId).order("submitted_at", { ascending: false })
     : Promise.resolve({ data: [], error: null });
@@ -164,10 +183,12 @@ export default async function ClientDetailPage({
     { data: focusedTask, error: focusedTaskError },
     { data: taskReferences, error: taskReferencesError },
     { data: creativeLinks, error: creativeLinksError },
+    { data: templates, error: templatesError },
     { data: dossier, error: dossierError },
     { data: personas, error: personasError },
     { data: rules, error: rulesError },
     { data: links, error: linksError },
+    { data: onboardingTemplates, error: onboardingTemplatesError },
     { data: submissions, error: submissionsError },
     { data: activity, error: activityError },
     aiSettings,
@@ -177,15 +198,17 @@ export default async function ClientDetailPage({
     focusedTaskQuery,
     taskReferencesQuery,
     creativeLinksQuery,
+    templatesQuery,
     dossierQuery,
     personasQuery,
     rulesQuery,
     linksQuery,
+    onboardingTemplatesQuery,
     submissionsQuery,
     activityQuery,
     aiSettingsQuery,
   ]);
-  const queryError = membersError || tasksError || focusedTaskError || taskReferencesError || creativeLinksError || dossierError || personasError || rulesError || linksError || submissionsError || activityError;
+  const queryError = membersError || tasksError || focusedTaskError || taskReferencesError || creativeLinksError || templatesError || dossierError || personasError || rulesError || linksError || onboardingTemplatesError || submissionsError || activityError;
   if (queryError) throw new Error(queryError.message);
 
   const agencyMembers = (members ?? []) as unknown as Member[];
@@ -272,6 +295,19 @@ export default async function ClientDetailPage({
               );
             })}
             <InlineTaskListCreator clientId={clientId} />
+            <TaskCsvImporter
+              clientId={clientId}
+              taskListId={selectedList?.kind !== "recurring" ? selectedList?.id : null}
+            />
+            {selectedList && selectedList.kind !== "recurring" && (
+              <TaskTemplateControls
+                clientId={clientId}
+                taskListId={selectedList.id}
+                taskListName={selectedList.name}
+                canSaveCurrentList={selectedList.kind === "custom"}
+                templates={(templates ?? []) as Array<{ id: string; name: string; description: string | null }>}
+              />
+            )}
             {selectedList?.kind === "custom" && (
               <div className="ml-auto flex items-center gap-3">
                 <form action={archiveTaskList}>
@@ -331,12 +367,13 @@ export default async function ClientDetailPage({
               )}
             </AutoFilterForm>
           </div>
-          <TaskTable tasks={clientTasks} taskReferences={clientTaskReferences} creativeRequests={clientCreativeLinks} lists={lists} members={agencyMembers} agencyId={context.agency.id} currentUserId={context.user.id} timezone={context.membership.timezone} focusedTaskId={filters.task} />
+          <TaskTable tasks={clientTasks} taskReferences={clientTaskReferences} creativeRequests={clientCreativeLinks} lists={lists} members={agencyMembers} agencyId={context.agency.id} currentUserId={context.user.id} currentUserRole={context.membership.role} timezone={context.membership.timezone} focusedTaskId={filters.task} />
         </div>
       )}
 
       {tab === "dossier" && (
         <>
+          <DossierExportButton clientId={clientId} />
           <DossierForm clientId={clientId} dossier={dossier} />
           <PersonaManager clientId={clientId} personas={personas ?? []} />
         </>
@@ -348,12 +385,27 @@ export default async function ClientDetailPage({
             <div>
               <h2 className="ui-section-title">Onboarding history</h2>
               <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">
-                Generate a new form whenever client context needs refreshing. Archive old forms to disable their public links while keeping submissions available here.
+              Generate a new form whenever client context needs refreshing. Archive old forms to disable their public links while keeping submissions available here.
               </p>
             </div>
-            <form action={generateOnboardingLink}>
+            <form action={generateOnboardingLink} className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <input type="hidden" name="client_id" value={clientId} />
-              <button className="ui-action ui-action-primary">Generate new onboarding form</button>
+              <label className="block text-sm font-medium">
+                <span className="mb-1.5 block text-[10px] uppercase tracking-[0.08em] text-zinc-500">Template</span>
+                <select
+                  name="template_id"
+                  defaultValue={(onboardingTemplates ?? []).find((template) => template.is_default)?.id ?? ""}
+                  className="min-w-[240px] rounded-lg border px-3 py-2 text-sm"
+                >
+                  <option value="">{DEFAULT_ONBOARDING_TEMPLATE_NAME}</option>
+                  {(onboardingTemplates ?? []).map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}{template.is_default ? " · default" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="ui-action ui-action-primary w-full sm:w-auto">Generate new onboarding form</button>
             </form>
           </div>
           <section>
@@ -370,6 +422,9 @@ export default async function ClientDetailPage({
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] ${link.active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-100 text-zinc-500"}`}>
                             {link.active ? "Active" : "Archived"}
+                          </span>
+                          <span className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                            {typeof link.template_name === "string" && link.template_name.trim() ? link.template_name : DEFAULT_ONBOARDING_TEMPLATE_NAME}
                           </span>
                           <span className="text-[10px] uppercase tracking-[0.06em] text-zinc-400">
                             {submission ? `Submitted ${formatDateTime(submission.submitted_at, context.membership.timezone)}` : "Awaiting submission"}

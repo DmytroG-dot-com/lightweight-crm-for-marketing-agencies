@@ -84,8 +84,10 @@ export async function createTaskFromInstruction(input: unknown) {
   const currentGeneral = agencyLists.find(
     (list) => list.client_id === context.client.id && list.kind === "general",
   );
-  const fallbackList = currentGeneral ?? currentList;
-  if (!fallbackList) throw new Error("This client does not have an active General task list.");
+  const currentTargetList = currentList?.kind !== "recurring"
+    ? currentList
+    : currentGeneral ?? null;
+  if (!currentTargetList) throw new Error("This client does not have an active task list for AI task creation.");
 
   let usedAi = false;
   let warning: string | null = null;
@@ -111,7 +113,7 @@ export async function createTaskFromInstruction(input: unknown) {
           tomorrow,
           currentUserId: context.user.id,
           currentClientId: context.client.id,
-          currentListId: currentList?.id ?? fallbackList.id,
+          currentListId: currentTargetList.id,
           members: agencyMembers.map((member) => ({
             id: member.user_id,
             name: member.display_name || member.email || "Member",
@@ -131,7 +133,7 @@ export async function createTaskFromInstruction(input: unknown) {
 
   const targetClient = agencyClients.find((client) => client.id === draft.client_id) ?? context.client;
   const targetList = targetClient.id === context.client.id
-    ? fallbackList
+    ? currentTargetList
     : agencyLists.find((list) => list.client_id === targetClient.id && list.kind === "general");
   if (!targetList) throw new Error("The selected client does not have an active General task list.");
 

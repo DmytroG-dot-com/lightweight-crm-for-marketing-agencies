@@ -1,5 +1,9 @@
 import { OnboardingForm } from "@/components/onboarding-form";
-import type { OnboardingDraft } from "@/lib/onboarding";
+import {
+  DEFAULT_ONBOARDING_TEMPLATE_NAME,
+  onboardingTemplateSchemaOrDefault,
+  type OnboardingDraft,
+} from "@/lib/onboarding";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function OnboardingPage({
@@ -14,7 +18,7 @@ export default async function OnboardingPage({
   const admin = createAdminClient();
   const { data: link } = await admin
     .from("onboarding_links")
-    .select("id, active, expires_at, draft, clients(name)")
+    .select("id, active, expires_at, draft, template_name, template_schema, clients(name)")
     .eq("token", token)
     .eq("active", true)
     .maybeSingle();
@@ -27,6 +31,10 @@ export default async function OnboardingPage({
     return <PublicMessage title="Thank you" description="Your onboarding information has been submitted to the agency." />;
   }
   const client = link.clients as unknown as { name: string } | null;
+  const schema = onboardingTemplateSchemaOrDefault(link.template_schema);
+  const templateName = typeof link.template_name === "string" && link.template_name.trim()
+    ? link.template_name
+    : DEFAULT_ONBOARDING_TEMPLATE_NAME;
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
@@ -36,11 +44,15 @@ export default async function OnboardingPage({
         <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-500">
           Share what you already know. Detailed answers help the team create stronger strategy, briefs, and creative work, but you can leave non-required questions blank.
         </p>
+        <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
+          Template: {templateName}
+        </p>
       </div>
       <OnboardingForm
         token={token}
         companyName={client?.name ?? ""}
         serverDraft={(link.draft ?? {}) as OnboardingDraft}
+        schema={schema}
       />
     </main>
   );

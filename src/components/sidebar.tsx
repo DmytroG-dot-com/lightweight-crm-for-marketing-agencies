@@ -3,7 +3,9 @@
 import { BarChart3, Bell, BriefcaseBusiness, FolderKanban, Menu, Palette, Settings, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { INBOX_UNREAD_REFRESH_EVENT } from "@/lib/inbox-events";
+import { createClient } from "@/lib/supabase/client";
 
 const links = [
   { href: "/inbox", label: "Inbox", icon: Bell, tone: "text-blue-600" },
@@ -12,15 +14,19 @@ const links = [
 ];
 
 export function Sidebar({
+  agencyId,
   agencyName,
   userLabel,
+  userId,
   clients,
   unreadCount,
   canManageTeam,
   signOutAction,
 }: {
+  agencyId: string;
   agencyName: string;
   userLabel: string;
+  userId: string;
   clients: Array<{ id: string; name: string }>;
   unreadCount: number;
   canManageTeam: boolean;
@@ -28,6 +34,50 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [liveUnreadCount, setLiveUnreadCount] = useState(unreadCount);
+  const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    setLiveUnreadCount(unreadCount);
+  }, [unreadCount]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function refreshUnreadCount() {
+      const { count, error } = await supabase
+        .from("notifications")
+        .select("id, clients!inner(status)", { count: "exact", head: true })
+        .eq("agency_id", agencyId)
+        .eq("recipient_id", userId)
+        .neq("clients.status", "archived")
+        .is("read_at", null)
+        .is("cleared_at", null);
+      if (!active || error || typeof count !== "number") return;
+      setLiveUnreadCount(count);
+    }
+
+    const handleRefresh = () => {
+      void refreshUnreadCount();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") handleRefresh();
+    };
+
+    handleRefresh();
+    const intervalId = window.setInterval(handleRefresh, 15000);
+    window.addEventListener("focus", handleRefresh);
+    window.addEventListener(INBOX_UNREAD_REFRESH_EVENT, handleRefresh);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener(INBOX_UNREAD_REFRESH_EVENT, handleRefresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [agencyId, supabase, userId]);
 
   const nav = (
     <aside className="flex h-full w-[270px] flex-col border-r border-zinc-950 bg-white px-7 py-8">
@@ -57,9 +107,9 @@ export function Sidebar({
             >
               <Icon className={`size-3.5 ${active ? tone : "text-zinc-300"}`} />
               {label}
-              {href === "/inbox" && unreadCount > 0 && (
+              {href === "/inbox" && liveUnreadCount > 0 && (
                 <span className="ml-auto bg-blue-600 px-1.5 py-0.5 font-mono text-[9px] text-white">
-                  {unreadCount > 99 ? "99+" : unreadCount}
+                  {liveUnreadCount > 99 ? "99+" : liveUnreadCount}
                 </span>
               )}
             </Link>

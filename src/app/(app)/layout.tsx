@@ -27,8 +27,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen overflow-x-clip">
       <TimezoneSync savedTimezone={membership.timezone} autoDetect={membership.timezone_auto} />
       <Sidebar
+        agencyId={agency.id}
         agencyName={agency.name}
         userLabel={label}
+        userId={user.id}
         clients={clients ?? []}
         unreadCount={unreadCount ?? 0}
         canManageTeam={membership.role === "owner" || membership.role === "admin"}

@@ -236,7 +236,7 @@ export function RecurringScheduleManager({
             <h2 className="ui-section-title">Recurring schedule</h2>
           </div>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">
-            Preview when recurring tasks will appear. Future instances are not created until their scheduled start date.
+            Preview the next scheduled runs. Recurring tasks keep one thread and reset to the next run when completed.
           </p>
         </div>
         <div className="flex w-fit border border-zinc-200">

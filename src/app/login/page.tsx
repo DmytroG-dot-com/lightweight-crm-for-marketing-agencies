@@ -59,7 +59,7 @@ export default async function LoginPage({
       title: "Recurring ops and onboarding",
       items: [
         "Daily, weekly, and monthly recurring task rules with due offsets and weekend handling.",
-        "Protected cron flow that generates due recurring tasks automatically.",
+        "Recurring tasks reset to the next run when completed, keeping the same thread of comments and context.",
         "Tokenized onboarding links with draft saves, submissions, and review flow.",
       ],
     },

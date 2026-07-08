@@ -4,8 +4,9 @@ import { Archive, MoreHorizontal, Trash2, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { archiveTask, deleteTask } from "@/actions/crm";
+import { TaskTemplateSaver } from "@/components/task-template-saver";
 
-type ActionKind = "archive" | "delete";
+type ActionKind = "archive" | "delete" | "template";
 
 const actionCopy: Record<ActionKind, { title: string; description: string; confirm: string }> = {
   archive: {
@@ -18,9 +19,26 @@ const actionCopy: Record<ActionKind, { title: string; description: string; confi
     description: "This permanently removes the task, comments, attachments, and watcher history. It cannot be restored.",
     confirm: "Delete permanently",
   },
+  template: {
+    title: "Save task tree as template",
+    description: "Capture this task and all subtasks so the same workflow can be applied to other clients later.",
+    confirm: "Save template",
+  },
 };
 
-export function TaskLifecycleActions({ clientId, taskId }: { clientId: string; taskId: string }) {
+export function TaskLifecycleActions({
+  clientId,
+  taskId,
+  taskTitle,
+  canArchive,
+  canDelete,
+}: {
+  clientId: string;
+  taskId: string;
+  taskTitle: string;
+  canArchive: boolean;
+  canDelete: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -47,6 +65,7 @@ export function TaskLifecycleActions({ clientId, taskId }: { clientId: string; t
   }
 
   function submit(kind: ActionKind) {
+    if (kind === "template") return;
     const formData = new FormData();
     formData.set("client_id", clientId);
     formData.set("task_id", taskId);
@@ -81,18 +100,38 @@ export function TaskLifecycleActions({ clientId, taskId }: { clientId: string; t
           <div className="absolute right-0 top-full z-[70] mt-2 w-52 border border-zinc-950 bg-white p-1 shadow-xl">
             <button
               type="button"
-              onClick={() => setConfirming("archive")}
+              onClick={() => {
+                setMenuOpen(false);
+                setConfirming("template");
+              }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"
             >
-              <Archive className="size-3.5" />Archive task
+              Save as template
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirming("delete")}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-red-500 hover:bg-red-50 hover:text-red-700"
-            >
-              <Trash2 className="size-3.5" />Delete permanently
-            </button>
+            {canArchive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setConfirming("archive");
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"
+              >
+                <Archive className="size-3.5" />Archive task
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setConfirming("delete");
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-red-500 hover:bg-red-50 hover:text-red-700"
+              >
+                <Trash2 className="size-3.5" />Delete permanently
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -118,18 +157,26 @@ export function TaskLifecycleActions({ clientId, taskId }: { clientId: string; t
               </button>
             </div>
             <p className="mt-4 text-sm leading-6 text-zinc-500">{actionCopy[confirming].description}</p>
-            {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
-            <div className="mt-6 flex justify-end gap-2 border-t border-zinc-200 pt-4">
-              <button type="button" disabled={pending} onClick={() => setConfirming(null)} className="ui-action disabled:opacity-50">Cancel</button>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => submit(confirming)}
-                className={`ui-action disabled:opacity-50 ${confirming === "delete" ? "border-red-600 bg-red-600 text-white hover:bg-red-700" : "ui-action-primary"}`}
-              >
-                {pending ? "Working..." : actionCopy[confirming].confirm}
-              </button>
-            </div>
+            {confirming === "template" ? (
+              <div className="mt-6 border-t border-zinc-200 pt-4">
+                <TaskTemplateSaver clientId={clientId} taskId={taskId} defaultName={taskTitle} embedded />
+              </div>
+            ) : (
+              <>
+                {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+                <div className="mt-6 flex justify-end gap-2 border-t border-zinc-200 pt-4">
+                  <button type="button" disabled={pending} onClick={() => setConfirming(null)} className="ui-action disabled:opacity-50">Cancel</button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => submit(confirming)}
+                    className={`ui-action disabled:opacity-50 ${confirming === "delete" ? "border-red-600 bg-red-600 text-white hover:bg-red-700" : "ui-action-primary"}`}
+                  >
+                    {pending ? "Working..." : actionCopy[confirming].confirm}
+                  </button>
+                </div>
+              </>
+            )}
           </section>
         </div>
       )}

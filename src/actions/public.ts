@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logActivity } from "@/lib/activity";
 import { CREATIVE_STATUSES } from "@/lib/constants";
-import { buildOnboardingSubmission, sanitizeOnboardingDraft } from "@/lib/onboarding";
+import {
+  buildOnboardingSubmission,
+  onboardingTemplateSchemaOrDefault,
+  sanitizeOnboardingDraft,
+} from "@/lib/onboarding";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function relatedClientStatus(value: unknown) {
@@ -28,7 +32,7 @@ export async function submitOnboarding(formData: FormData) {
   const admin = createAdminClient();
   const { data: link } = await admin
     .from("onboarding_links")
-    .select("id, agency_id, client_id, active, expires_at")
+    .select("id, agency_id, client_id, active, expires_at, template_schema")
     .eq("token", token)
     .eq("active", true)
     .maybeSingle();
@@ -37,7 +41,10 @@ export async function submitOnboarding(formData: FormData) {
     throw new Error("This onboarding link is invalid or expired.");
   }
 
-  const submission = buildOnboardingSubmission(formData);
+  const submission = buildOnboardingSubmission(
+    formData,
+    onboardingTemplateSchemaOrDefault(link.template_schema),
+  );
   const { data, error } = await admin
     .from("onboarding_submissions")
     .upsert(
@@ -69,11 +76,10 @@ export async function submitOnboarding(formData: FormData) {
 
 export async function saveOnboardingDraft(tokenInput: string, input: unknown) {
   const token = z.string().uuid().parse(tokenInput);
-  const draft = sanitizeOnboardingDraft(input);
   const admin = createAdminClient();
   const { data: link } = await admin
     .from("onboarding_links")
-    .select("id, active, expires_at")
+    .select("id, active, expires_at, template_schema")
     .eq("token", token)
     .eq("active", true)
     .maybeSingle();
@@ -82,10 +88,13 @@ export async function saveOnboardingDraft(tokenInput: string, input: unknown) {
     throw new Error("This onboarding link is invalid or expired.");
   }
 
+  const schema = onboardingTemplateSchemaOrDefault(link.template_schema);
+  const sanitizedDraft = sanitizeOnboardingDraft(input, schema);
+
   const updatedAt = new Date().toISOString();
   const { error } = await admin
     .from("onboarding_links")
-    .update({ draft, draft_updated_at: updatedAt })
+    .update({ draft: sanitizedDraft, draft_updated_at: updatedAt })
     .eq("id", link.id);
   if (error) throw new Error(error.message);
 

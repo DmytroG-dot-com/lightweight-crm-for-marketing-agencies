@@ -108,7 +108,7 @@ export default async function MyWorkPage({ searchParams }: { searchParams: Promi
               </div>
               <span className="font-mono text-xs">{String(section.tasks.length).padStart(2, "0")}</span>
             </div>
-            <TaskTable tasks={section.tasks} taskReferences={references} lists={(lists ?? []) as List[]} members={(members ?? []) as Member[]} agencyId={context.agency.id} currentUserId={context.user.id} timezone={context.membership.timezone} showClient tone={section.tone} />
+            <TaskTable tasks={section.tasks} taskReferences={references} lists={(lists ?? []) as List[]} members={(members ?? []) as Member[]} agencyId={context.agency.id} currentUserId={context.user.id} currentUserRole={context.membership.role} timezone={context.membership.timezone} showClient tone={section.tone} />
           </section>
         ))}
       </div>

@@ -248,7 +248,7 @@ export function TaskDateRangePicker({
                 <p className="ui-kicker">{recurrenceOpen ? "Recurring schedule" : "Task dates"}</p>
                 <p className="mt-1 text-xs text-zinc-500">
                   {recurrenceOpen
-                    ? "Future tasks will be created on schedule in the Recurring list"
+                    ? "Recurring tasks reset in place when completed, keeping comments and context on the same task"
                     : draftStart && !draftDue ? "Select the due date" : "Select the start date, then the due date"}
                 </p>
               </div>

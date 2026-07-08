@@ -332,10 +332,7 @@ export function CommentComposer({
           {recordingMode === "voice" ? <Square className="size-3.5" /> : <Mic className="size-3.5" />}
           {recordingMode === "voice" ? "Stop voice recording" : "Record voice"}
         </button>
-        <span className="ml-auto text-[9px] font-semibold uppercase tracking-[0.08em] text-zinc-400">
-          Ctrl/⌘ + Enter
-        </span>
-        <button disabled={pending || !!recordingMode} className="ui-action ui-action-primary disabled:opacity-50">
+        <button disabled={pending || !!recordingMode} className="ui-action ui-action-primary ml-auto disabled:opacity-50">
           {pending ? "Uploading..." : "Add comment"}
         </button>
       </div>

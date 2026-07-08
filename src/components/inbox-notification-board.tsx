@@ -2,8 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { AtSign, Bell, Eye, MailOpen, MessageSquareText, RefreshCw, RotateCcw, X } from "lucide-react";
+import { AtSign, Bell, MailOpen, MessageSquareText, RefreshCw, RotateCcw, X } from "lucide-react";
 import {
   clearNotification,
   openNotification,
@@ -12,6 +11,7 @@ import {
 } from "@/actions/inbox";
 import { EmptyState } from "@/components/empty-state";
 import { TASK_STATUSES } from "@/lib/constants";
+import { dispatchInboxUnreadRefresh } from "@/lib/inbox-events";
 import { taskStatusTone } from "@/lib/task-tones";
 import { formatDateTime, formatLabel } from "@/lib/utils";
 
@@ -154,7 +154,6 @@ export function InboxNotificationBoard({
   actorNames: Record<string, string>;
   timezone: string;
 }) {
-  const router = useRouter();
   const [, startTransition] = useTransition();
   const timersRef = useRef<Record<string, number>>({});
   const [items, setItems] = useState(notifications);
@@ -209,7 +208,7 @@ export function InboxNotificationBoard({
         const formData = buildFormData(notification.id);
         if (action === "clear") await clearNotification(formData);
         else await restoreNotification(formData);
-        router.refresh();
+        dispatchInboxUnreadRefresh();
       } catch (actionError) {
         cancelRemoval(notification.id);
         setExiting(notification.id, false);
@@ -234,7 +233,7 @@ export function InboxNotificationBoard({
     startTransition(async () => {
       try {
         await setNotificationReadState(buildFormData(notification.id, nextUnread));
-        router.refresh();
+        dispatchInboxUnreadRefresh();
       } catch (actionError) {
         setItems((current) => current.map((item) => item.id === notification.id
           ? { ...item, read_at: previousReadAt }
@@ -392,12 +391,32 @@ function NotificationRow({
       : MessageSquareText;
   const unread = !notification.read_at;
   const tone = getNotificationTone(notification);
-  const rowClass = unread && !cleared ? tone.unreadRow : "bg-white";
+  const rowClass = unread && !cleared ? "border-l-2 border-slate-500 bg-slate-100/80" : "bg-white";
+  const openFormRef = useRef<HTMLFormElement>(null);
+
+  function openRow() {
+    if (busy || exiting) return;
+    openFormRef.current?.requestSubmit();
+  }
 
   return (
     <article
-      className={`grid gap-4 px-4 py-4 transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none sm:grid-cols-[auto_minmax(0,1fr)_auto] ${rowClass} ${exiting ? "translate-x-6 opacity-0 pointer-events-none" : "translate-x-0 opacity-100"}`}
+      role="button"
+      tabIndex={busy || exiting ? -1 : 0}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("[data-notification-action='true']")) return;
+        openRow();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        openRow();
+      }}
+      className={`grid cursor-pointer gap-4 px-4 py-4 transition-[transform,opacity,background-color] duration-200 ease-out motion-reduce:transition-none sm:grid-cols-[auto_minmax(0,1fr)_auto] ${rowClass} ${exiting ? "pointer-events-none translate-x-6 opacity-0" : "translate-x-0 opacity-100 hover:bg-slate-50"}`}
     >
+      <form ref={openFormRef} action={openNotification} className="hidden">
+        <input type="hidden" name="notification_id" value={notification.id} />
+      </form>
       <span className={`hidden size-8 place-items-center border sm:grid ${tone.tile}`}>
         <Icon className="size-3.5" />
       </span>
@@ -409,11 +428,6 @@ function NotificationRow({
           <h3 className="text-sm font-semibold uppercase tracking-[0.03em] text-zinc-950">
             <NotificationHeadline notification={notification} actorName={actorName} />
           </h3>
-          {unread && !cleared && (
-            <span className={`border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] ${tone.unreadBadge}`}>
-              Unread
-            </span>
-          )}
         </div>
 
         <NotificationBody notification={notification} tone={tone} />
@@ -427,13 +441,6 @@ function NotificationRow({
           {formatDateTime(notification.created_at, timezone)}
         </time>
         <div className="flex flex-wrap items-center gap-1 sm:justify-end">
-          <form action={openNotification}>
-            <input type="hidden" name="notification_id" value={notification.id} />
-            <NotificationActionButton disabled={busy || exiting} title="Open notification" tone="accent">
-              <Eye className="size-3.5" />
-              <span className="sr-only">Open notification</span>
-            </NotificationActionButton>
-          </form>
           {cleared ? (
             <NotificationActionButton
               type="button"
@@ -476,6 +483,7 @@ function NotificationRow({
 function NotificationActionButton({
   tone = "default",
   className = "",
+  onClick,
   ...props
 }: ComponentProps<"button"> & {
   tone?: "default" | "accent" | "destructive";
@@ -489,6 +497,11 @@ function NotificationActionButton({
   return (
     <button
       {...props}
+      data-notification-action="true"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(event);
+      }}
       className={`ui-action-ghost size-8 p-0 disabled:opacity-40 ${toneClass} ${className}`}
     />
   );

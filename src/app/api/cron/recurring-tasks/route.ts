@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     .select("*")
     .in("client_id", activeClients.map((client) => client.id))
     .eq("active", true)
+    .eq("generation_mode", "generate_task")
     .lte("next_run_at", today)
     .order("next_run_at")
     .limit(100);

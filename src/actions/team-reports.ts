@@ -12,6 +12,22 @@ const requestSchema = z.object({
   focus: z.string().trim().max(1000).optional().default(""),
 });
 
+type CompletedEvidenceRow = {
+  id: string;
+  title: string;
+  client_id: string;
+  completed_at: string;
+  completed_assignee_id: string | null;
+  clients: { name: string; status: string } | null;
+};
+
+function normalizeJoinedClient(
+  value: { name: string; status: string } | Array<{ name: string; status: string }> | null | undefined,
+) {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
 export async function generateAiTeamReport(input: unknown) {
   const parsed = requestSchema.parse(input);
   const context = await requireAgencyAdmin();
@@ -21,7 +37,8 @@ export async function generateAiTeamReport(input: unknown) {
 
   const [
     { data: metrics, error: metricsError },
-    { data: completed, error: completedError },
+    { data: completedTasks, error: completedTasksError },
+    { data: completedRuns, error: completedRunsError },
     { data: risks, error: risksError },
   ] = await Promise.all([
     context.supabase.rpc("get_team_report_metrics", {
@@ -41,6 +58,15 @@ export async function generateAiTeamReport(input: unknown) {
       .order("completed_at", { ascending: false })
       .limit(120),
     context.supabase
+      .from("recurring_task_runs")
+      .select("id, task_id, title, client_id, completed_at, completed_assignee_id, clients!inner(name, status)")
+      .eq("agency_id", context.agency.id)
+      .neq("clients.status", "archived")
+      .gte("completed_at", start.toISOString())
+      .lt("completed_at", end.toISOString())
+      .order("completed_at", { ascending: false })
+      .limit(120),
+    context.supabase
       .from("tasks")
       .select("id, title, client_id, status, priority, assignee_id, due_date, clients!inner(name, status)")
       .eq("agency_id", context.agency.id)
@@ -51,8 +77,29 @@ export async function generateAiTeamReport(input: unknown) {
       .order("due_date", { ascending: true, nullsFirst: false })
       .limit(120),
   ]);
-  const queryError = metricsError || completedError || risksError;
+  const queryError = metricsError || completedTasksError || completedRunsError || risksError;
   if (queryError) throw new Error(queryError.message);
+
+  const completed: CompletedEvidenceRow[] = [
+    ...(completedTasks ?? []).map((task) => ({
+      id: task.id,
+      title: task.title,
+      client_id: task.client_id,
+      completed_at: task.completed_at,
+      completed_assignee_id: task.completed_assignee_id,
+      clients: normalizeJoinedClient(task.clients),
+    })),
+    ...(completedRuns ?? []).map((run) => ({
+      id: run.task_id,
+      title: run.title,
+      client_id: run.client_id,
+      completed_at: run.completed_at,
+      completed_assignee_id: run.completed_assignee_id,
+      clients: normalizeJoinedClient(run.clients),
+    })),
+  ]
+    .sort((left, right) => new Date(right.completed_at).getTime() - new Date(left.completed_at).getTime())
+    .slice(0, 120);
 
   const metricClientIds = ((metrics as { clients?: Array<{ id: string }> } | null)?.clients ?? []).map((client) => client.id);
   const report = validateEvidence(await generateTeamReportWithAi({
@@ -75,7 +122,7 @@ export async function generateAiTeamReport(input: unknown) {
       completed_tasks: completed ?? [],
       overdue_or_blocked_tasks: risks ?? [],
     },
-  }), completed ?? [], risks ?? [], metricClientIds);
+  }), completed, risks ?? [], metricClientIds);
 
   const { data: saved, error } = await context.supabase
     .from("ai_team_reports")

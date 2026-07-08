@@ -1,6 +1,6 @@
 begin;
 
--- Agency CRM fresh-project bootstrap, consolidated through migration 0022.
+-- Agency CRM fresh-project bootstrap, consolidated through migration 0027.
 -- Run this file once in a new Supabase project's SQL editor. Do not run the
 -- numbered migrations afterward; they are only for incrementally upgrading an
 -- existing project.
@@ -12,8 +12,11 @@ drop table if exists
   public.creative_request_comments,
   public.external_creators,
   public.creative_requests,
+  public.task_template_items,
+  public.task_templates,
   public.client_personas,
   public.onboarding_submissions,
+  public.onboarding_templates,
   public.onboarding_links,
   public.activity_logs,
   public.dossiers,
@@ -21,6 +24,7 @@ drop table if exists
   public.task_watchers,
   public.task_comment_attachments,
   public.task_comments,
+  public.recurring_task_runs,
   public.tasks,
   public.recurring_task_rules,
   public.task_lists,
@@ -35,6 +39,9 @@ cascade;
 drop function if exists public.provision_user_agency(uuid, text, uuid) cascade;
 drop function if exists public.generate_unique_task_share_code() cascade;
 drop function if exists public.generate_short_code(integer) cascade;
+drop function if exists public.complete_recurring_task_run(uuid, uuid, uuid, uuid) cascade;
+drop function if exists public.advance_recurring_schedule_date(date, text, integer, boolean) cascade;
+drop function if exists public.recurring_move_to_weekday(date) cascade;
 drop function if exists public.get_team_report_metrics(uuid, timestamptz, timestamptz) cascade;
 drop function if exists public.get_team_dashboard_metrics(uuid, timestamptz) cascade;
 drop function if exists public.restore_client_workspace(uuid, uuid) cascade;
@@ -44,6 +51,7 @@ drop function if exists public.archive_task_tree(uuid, uuid, uuid, timestamptz) 
 drop function if exists public.move_task_tree_to_list(uuid, uuid, uuid, uuid) cascade;
 drop function if exists public.is_agency_admin(uuid) cascade;
 drop function if exists public.is_agency_member(uuid) cascade;
+drop function if exists public.prevent_direct_reset_recurring_completion() cascade;
 drop function if exists public.set_task_completion() cascade;
 drop function if exists public.set_updated_at() cascade;
 drop function if exists public.storage_path_agency_id(text) cascade;
@@ -217,12 +225,57 @@ create table public.recurring_task_rules (
   next_run_at date not null,
   due_offset_days integer not null default 0 check (due_offset_days >= 0),
   skip_weekends boolean not null default false,
+  generation_mode text not null default 'reset_task' check (generation_mode in ('generate_task', 'reset_task')),
   active boolean not null default true,
   paused_by_client_at timestamptz,
   was_active_before_client_archive boolean,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table public.recurring_task_runs (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references public.agencies(id) on delete cascade,
+  client_id uuid not null references public.clients(id) on delete cascade,
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  recurring_rule_id uuid references public.recurring_task_rules(id) on delete set null,
+  task_list_id uuid references public.task_lists(id) on delete set null,
+  title text not null,
+  occurrence_date date not null,
+  start_date date,
+  due_date date,
+  completed_at timestamptz not null default now(),
+  completed_assignee_id uuid references auth.users(id) on delete set null,
+  completed_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (task_id, occurrence_date)
+);
+
+create table public.task_templates (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references public.agencies(id) on delete cascade,
+  name text not null,
+  description text,
+  created_from_task_id uuid,
+  created_from_task_list_id uuid,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.task_template_items (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references public.agencies(id) on delete cascade,
+  template_id uuid not null,
+  parent_item_id uuid,
+  sort_order integer not null default 0,
+  title text not null,
+  description text,
+  status text not null default 'todo' check (status in ('todo', 'in_progress', 'review', 'blocked', 'complete')),
+  priority text not null default 'normal' check (priority in ('low', 'normal', 'high', 'urgent')),
+  assignee_id uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
 );
 
 create table public.dossiers (
@@ -282,10 +335,25 @@ create table public.activity_logs (
   created_at timestamptz not null default now()
 );
 
+create table public.onboarding_templates (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references public.agencies(id) on delete cascade,
+  name text not null,
+  description text,
+  schema jsonb not null,
+  is_default boolean not null default false,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table public.onboarding_links (
   id uuid primary key default gen_random_uuid(),
   agency_id uuid not null references public.agencies(id) on delete cascade,
   client_id uuid not null,
+  template_id uuid,
+  template_name text,
+  template_schema jsonb,
   token uuid not null default gen_random_uuid() unique,
   expires_at timestamptz,
   active boolean not null default true,
@@ -383,13 +451,18 @@ create table public.creative_assignments (
 -- Composite relationships prevent cross-agency references even when callers
 -- bypass the application and write through the authenticated Supabase API.
 create unique index clients_id_agency_key on public.clients(id, agency_id);
+create unique index task_lists_id_agency_key on public.task_lists(id, agency_id);
 create unique index task_lists_id_agency_client_key on public.task_lists(id, agency_id, client_id);
 create unique index tasks_id_agency_client_key on public.tasks(id, agency_id, client_id);
 create unique index tasks_id_agency_key on public.tasks(id, agency_id);
 create unique index task_comments_id_agency_key on public.task_comments(id, agency_id);
 create unique index task_comments_agency_request_key on public.task_comments(agency_id, author_id, client_request_id) where client_request_id is not null;
 create unique index recurring_rules_id_agency_client_key on public.recurring_task_rules(id, agency_id, client_id);
+create unique index task_templates_id_agency_key on public.task_templates(id, agency_id);
+create unique index task_template_items_id_agency_template_key on public.task_template_items(id, agency_id, template_id);
 create unique index onboarding_links_id_agency_client_key on public.onboarding_links(id, agency_id, client_id);
+create unique index onboarding_templates_id_agency_key on public.onboarding_templates(id, agency_id);
+create unique index onboarding_templates_default_agency_key on public.onboarding_templates(agency_id) where is_default;
 create unique index client_personas_id_agency_client_key on public.client_personas(id, agency_id, client_id);
 create unique index creative_requests_id_agency_key on public.creative_requests(id, agency_id);
 create unique index external_creators_id_agency_key on public.external_creators(id, agency_id);
@@ -425,6 +498,14 @@ alter table public.recurring_task_rules add constraint recurring_rules_client_ag
   foreign key (client_id, agency_id) references public.clients(id, agency_id) on delete cascade;
 alter table public.recurring_task_rules add constraint recurring_rules_list_agency_client_fkey
   foreign key (task_list_id, agency_id, client_id) references public.task_lists(id, agency_id, client_id);
+alter table public.task_templates add constraint task_templates_source_task_agency_fkey
+  foreign key (created_from_task_id, agency_id) references public.tasks(id, agency_id) on delete set null;
+alter table public.task_templates add constraint task_templates_source_list_agency_fkey
+  foreign key (created_from_task_list_id, agency_id) references public.task_lists(id, agency_id) on delete set null;
+alter table public.task_template_items add constraint task_template_items_template_agency_fkey
+  foreign key (template_id, agency_id) references public.task_templates(id, agency_id) on delete cascade;
+alter table public.task_template_items add constraint task_template_items_parent_agency_template_fkey
+  foreign key (parent_item_id, agency_id, template_id) references public.task_template_items(id, agency_id, template_id) on delete cascade;
 alter table public.dossiers add constraint dossiers_client_agency_fkey
   foreign key (client_id, agency_id) references public.clients(id, agency_id) on delete cascade;
 alter table public.client_personas add constraint client_personas_client_agency_fkey
@@ -433,6 +514,8 @@ alter table public.activity_logs add constraint activity_logs_client_agency_fkey
   foreign key (client_id, agency_id) references public.clients(id, agency_id) on delete cascade;
 alter table public.onboarding_links add constraint onboarding_links_client_agency_fkey
   foreign key (client_id, agency_id) references public.clients(id, agency_id) on delete cascade;
+alter table public.onboarding_links add constraint onboarding_links_template_agency_fkey
+  foreign key (template_id, agency_id) references public.onboarding_templates(id, agency_id) on delete set null;
 alter table public.onboarding_submissions add constraint onboarding_submissions_client_agency_fkey
   foreign key (client_id, agency_id) references public.clients(id, agency_id) on delete cascade;
 alter table public.onboarding_submissions add constraint onboarding_submissions_link_agency_client_fkey
@@ -470,11 +553,17 @@ create index notifications_recipient_unread_idx on public.notifications(recipien
 create index notifications_recipient_cleared_idx on public.notifications(recipient_id, cleared_at, created_at desc);
 create index recurring_rules_due_idx on public.recurring_task_rules(active, next_run_at);
 create index recurring_rules_agency_client_idx on public.recurring_task_rules(agency_id, client_id);
+create index recurring_task_runs_agency_completed_idx on public.recurring_task_runs(agency_id, completed_at desc);
+create index recurring_task_runs_assignee_completed_idx on public.recurring_task_runs(agency_id, completed_assignee_id, completed_at desc);
+create index recurring_task_runs_client_completed_idx on public.recurring_task_runs(agency_id, client_id, completed_at desc);
+create index task_templates_agency_created_idx on public.task_templates(agency_id, created_at desc);
+create index task_template_items_template_sort_idx on public.task_template_items(template_id, sort_order, created_at);
 create index client_personas_agency_client_active_idx on public.client_personas(agency_id, client_id, active, is_primary);
 create index activity_logs_client_idx on public.activity_logs(client_id, created_at desc);
 create index activity_logs_agency_created_idx on public.activity_logs(agency_id, created_at desc);
 create index ai_team_reports_agency_created_idx on public.ai_team_reports(agency_id, created_at desc);
 create index onboarding_links_agency_client_idx on public.onboarding_links(agency_id, client_id);
+create index onboarding_templates_agency_created_idx on public.onboarding_templates(agency_id, created_at desc);
 create index creative_requests_agency_idx on public.creative_requests(agency_id, due_date);
 create index creative_requests_agency_persona_idx on public.creative_requests(agency_id, persona_id) where persona_id is not null and archived_at is null;
 create index creative_requests_agency_creator_idx on public.creative_requests(agency_id, creator_id, status, due_date) where creator_id is not null and archived_at is null;
@@ -511,6 +600,274 @@ begin
     new.completed_assignee_id = null;
   end if;
   return new;
+end;
+$$;
+
+create or replace function public.recurring_move_to_weekday(input_date date)
+returns date
+language plpgsql
+immutable
+strict
+set search_path = public
+as $$
+declare
+  normalized date := input_date;
+begin
+  if extract(isodow from normalized) = 6 then
+    normalized := normalized + 2;
+  elsif extract(isodow from normalized) = 7 then
+    normalized := normalized + 1;
+  end if;
+
+  return normalized;
+end;
+$$;
+
+create or replace function public.advance_recurring_schedule_date(
+  input_date date,
+  input_frequency text,
+  input_interval_count integer,
+  input_skip_weekends boolean
+)
+returns date
+language plpgsql
+immutable
+strict
+set search_path = public
+as $$
+declare
+  next_date date;
+  month_anchor date;
+  last_day date;
+  target_day integer;
+begin
+  if input_interval_count <= 0 then
+    raise exception 'Recurring interval must be positive.';
+  end if;
+
+  if input_frequency = 'daily' then
+    next_date := input_date + input_interval_count;
+  elsif input_frequency = 'weekly' then
+    next_date := input_date + (input_interval_count * 7);
+  elsif input_frequency = 'monthly' then
+    month_anchor := (date_trunc('month', input_date)::date + make_interval(months => input_interval_count))::date;
+    last_day := (date_trunc('month', month_anchor)::date + interval '1 month - 1 day')::date;
+    target_day := least(
+      extract(day from input_date)::integer,
+      extract(day from last_day)::integer
+    );
+    next_date := make_date(
+      extract(year from month_anchor)::integer,
+      extract(month from month_anchor)::integer,
+      target_day
+    );
+  else
+    raise exception 'Unsupported recurring frequency: %', input_frequency;
+  end if;
+
+  if input_skip_weekends then
+    next_date := public.recurring_move_to_weekday(next_date);
+  end if;
+
+  return next_date;
+end;
+$$;
+
+create or replace function public.prevent_direct_reset_recurring_completion()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  recurring_mode text;
+begin
+  if new.source_recurring_rule_id is null or new.status <> 'complete' then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' and old.status = 'complete' then
+    return new;
+  end if;
+
+  select generation_mode
+  into recurring_mode
+  from public.recurring_task_rules
+  where id = new.source_recurring_rule_id;
+
+  if recurring_mode = 'reset_task' then
+    raise exception 'Reset-style recurring tasks must be completed through the app workflow.';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.complete_recurring_task_run(
+  target_agency_id uuid,
+  target_client_id uuid,
+  target_task_id uuid,
+  actor_user_id uuid default null
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  task_row record;
+  rule_row record;
+  completed_timestamp timestamptz := now();
+  completed_date date := now()::date;
+  current_occurrence date;
+  next_occurrence date;
+  next_due date;
+  following_run date;
+  run_id uuid;
+begin
+  if not public.is_agency_member(target_agency_id) then
+    raise exception 'Agency membership is required.';
+  end if;
+
+  select
+    task.id,
+    task.title,
+    task.status,
+    task.assignee_id,
+    task.task_list_id,
+    task.source_recurring_rule_id,
+    task.occurrence_date,
+    task.start_date,
+    task.due_date
+  into task_row
+  from public.tasks as task
+  where task.id = target_task_id
+    and task.agency_id = target_agency_id
+    and task.client_id = target_client_id
+    and task.archived_at is null
+  for update;
+
+  if not found then
+    raise exception 'Task not found.';
+  end if;
+
+  if task_row.source_recurring_rule_id is null then
+    raise exception 'Task is not recurring.';
+  end if;
+
+  if task_row.status = 'complete' then
+    raise exception 'Recurring task is already complete.';
+  end if;
+
+  select
+    rule.id,
+    rule.frequency,
+    rule.interval_count,
+    rule.next_run_at,
+    rule.due_offset_days,
+    rule.skip_weekends,
+    rule.active,
+    rule.generation_mode
+  into rule_row
+  from public.recurring_task_rules as rule
+  where rule.id = task_row.source_recurring_rule_id
+    and rule.agency_id = target_agency_id
+    and rule.client_id = target_client_id
+  for update;
+
+  if not found then
+    raise exception 'Recurring rule not found.';
+  end if;
+
+  if rule_row.generation_mode <> 'reset_task' then
+    raise exception 'This recurring task uses the legacy schedule model.';
+  end if;
+
+  if not rule_row.active then
+    raise exception 'Recurring task is paused.';
+  end if;
+
+  current_occurrence := coalesce(task_row.occurrence_date, task_row.start_date, task_row.due_date, rule_row.next_run_at);
+
+  insert into public.recurring_task_runs (
+    agency_id,
+    client_id,
+    task_id,
+    recurring_rule_id,
+    task_list_id,
+    title,
+    occurrence_date,
+    start_date,
+    due_date,
+    completed_at,
+    completed_assignee_id,
+    completed_by
+  )
+  values (
+    target_agency_id,
+    target_client_id,
+    task_row.id,
+    task_row.source_recurring_rule_id,
+    task_row.task_list_id,
+    task_row.title,
+    current_occurrence,
+    task_row.start_date,
+    task_row.due_date,
+    completed_timestamp,
+    task_row.assignee_id,
+    actor_user_id
+  )
+  returning id into run_id;
+
+  next_occurrence := rule_row.next_run_at;
+  while next_occurrence <= completed_date loop
+    next_occurrence := public.advance_recurring_schedule_date(
+      next_occurrence,
+      rule_row.frequency,
+      rule_row.interval_count,
+      rule_row.skip_weekends
+    );
+  end loop;
+
+  next_due := next_occurrence + rule_row.due_offset_days;
+  if rule_row.skip_weekends then
+    next_due := public.recurring_move_to_weekday(next_due);
+  end if;
+
+  following_run := public.advance_recurring_schedule_date(
+    next_occurrence,
+    rule_row.frequency,
+    rule_row.interval_count,
+    rule_row.skip_weekends
+  );
+
+  update public.tasks
+  set
+    status = 'todo',
+    occurrence_date = next_occurrence,
+    start_date = next_occurrence,
+    due_date = next_due,
+    completed_at = null,
+    completed_assignee_id = null
+  where id = task_row.id
+    and agency_id = target_agency_id
+    and client_id = target_client_id;
+
+  update public.recurring_task_rules
+  set next_run_at = following_run
+  where id = rule_row.id
+    and agency_id = target_agency_id
+    and client_id = target_client_id;
+
+  return jsonb_build_object(
+    'run_id', run_id,
+    'task_id', task_row.id,
+    'title', task_row.title,
+    'task_list_id', task_row.task_list_id,
+    'completed_at', completed_timestamp,
+    'next_start_date', next_occurrence,
+    'next_due_date', next_due,
+    'next_run_at', following_run
+  );
 end;
 $$;
 
@@ -577,10 +934,13 @@ create trigger agencies_updated_at before update on public.agencies for each row
 create trigger agency_ai_settings_updated_at before update on public.agency_ai_settings for each row execute function public.set_updated_at();
 create trigger clients_updated_at before update on public.clients for each row execute function public.set_updated_at();
 create trigger tasks_updated_at before update on public.tasks for each row execute function public.set_updated_at();
+create trigger tasks_direct_recurring_completion_guard before insert or update of status on public.tasks for each row execute function public.prevent_direct_reset_recurring_completion();
 create trigger tasks_completion before insert or update of status on public.tasks for each row execute function public.set_task_completion();
 create trigger recurring_rules_updated_at before update on public.recurring_task_rules for each row execute function public.set_updated_at();
+create trigger task_templates_updated_at before update on public.task_templates for each row execute function public.set_updated_at();
 create trigger dossiers_updated_at before update on public.dossiers for each row execute function public.set_updated_at();
 create trigger client_personas_updated_at before update on public.client_personas for each row execute function public.set_updated_at();
+create trigger onboarding_templates_updated_at before update on public.onboarding_templates for each row execute function public.set_updated_at();
 create trigger creative_requests_updated_at before update on public.creative_requests for each row execute function public.set_updated_at();
 create trigger external_creators_updated_at before update on public.external_creators for each row execute function public.set_updated_at();
 create trigger creative_assignments_updated_at before update on public.creative_assignments for each row execute function public.set_updated_at();
@@ -995,6 +1355,14 @@ begin
       and task.archived_at is null
       and task.status = 'complete'
       and task.completed_at >= range_start
+
+    union all
+
+    select recurring_run.id, recurring_run.client_id, recurring_run.completed_assignee_id
+    from public.recurring_task_runs as recurring_run
+    join active_clients as client on client.id = recurring_run.client_id
+    where recurring_run.agency_id = target_agency_id
+      and recurring_run.completed_at >= range_start
   ),
   recent_comments as (
     select comment.id, comment.author_id
@@ -1098,6 +1466,15 @@ begin
       and task.status = 'complete'
       and task.completed_at >= range_start
       and task.completed_at < range_end
+
+    union all
+
+    select recurring_run.id, recurring_run.client_id, recurring_run.completed_assignee_id
+    from public.recurring_task_runs as recurring_run
+    join active_clients as client on client.id = recurring_run.client_id
+    where recurring_run.agency_id = target_agency_id
+      and recurring_run.completed_at >= range_start
+      and recurring_run.completed_at < range_end
   ),
   recent_comments as (
     select comment.id, comment.author_id
@@ -1157,6 +1534,9 @@ $$;
 revoke all on function public.is_agency_member(uuid) from public, anon;
 revoke all on function public.is_agency_admin(uuid) from public, anon;
 revoke all on function public.storage_path_agency_id(text) from public, anon;
+revoke all on function public.recurring_move_to_weekday(date) from public, anon;
+revoke all on function public.advance_recurring_schedule_date(date, text, integer, boolean) from public, anon;
+revoke all on function public.complete_recurring_task_run(uuid, uuid, uuid, uuid) from public, anon;
 revoke all on function public.move_task_tree_to_list(uuid, uuid, uuid, uuid) from public, anon;
 revoke all on function public.archive_task_tree(uuid, uuid, uuid, timestamptz) from public, anon;
 revoke all on function public.restore_task_tree(uuid, uuid, uuid) from public, anon;
@@ -1167,6 +1547,9 @@ revoke all on function public.get_team_report_metrics(uuid, timestamptz, timesta
 grant execute on function public.is_agency_member(uuid) to authenticated, service_role;
 grant execute on function public.is_agency_admin(uuid) to authenticated, service_role;
 grant execute on function public.storage_path_agency_id(text) to authenticated, service_role;
+grant execute on function public.recurring_move_to_weekday(date) to authenticated, service_role;
+grant execute on function public.advance_recurring_schedule_date(date, text, integer, boolean) to authenticated, service_role;
+grant execute on function public.complete_recurring_task_run(uuid, uuid, uuid, uuid) to authenticated, service_role;
 grant execute on function public.move_task_tree_to_list(uuid, uuid, uuid, uuid) to authenticated, service_role;
 grant execute on function public.archive_task_tree(uuid, uuid, uuid, timestamptz) to authenticated, service_role;
 grant execute on function public.restore_task_tree(uuid, uuid, uuid) to authenticated, service_role;
@@ -1187,9 +1570,13 @@ alter table public.task_comment_attachments enable row level security;
 alter table public.task_watchers enable row level security;
 alter table public.notifications enable row level security;
 alter table public.recurring_task_rules enable row level security;
+alter table public.recurring_task_runs enable row level security;
+alter table public.task_templates enable row level security;
+alter table public.task_template_items enable row level security;
 alter table public.dossiers enable row level security;
 alter table public.client_personas enable row level security;
 alter table public.activity_logs enable row level security;
+alter table public.onboarding_templates enable row level security;
 alter table public.onboarding_links enable row level security;
 alter table public.onboarding_submissions enable row level security;
 alter table public.creative_requests enable row level security;
@@ -1228,7 +1615,16 @@ create policy "admins can delete clients" on public.clients for delete using (
   public.is_agency_admin(agency_id) and status = 'archived'
 );
 create policy "members can manage task lists" on public.task_lists for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
-create policy "members can manage tasks" on public.tasks for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
+create policy "members can read tasks" on public.tasks for select using (public.is_agency_member(agency_id));
+create policy "members can create tasks" on public.tasks for insert with check (public.is_agency_member(agency_id));
+create policy "members can update tasks" on public.tasks for update using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
+create policy "members can delete own tasks or admins can delete any task" on public.tasks for delete using (
+  public.is_agency_member(agency_id)
+  and (
+    public.is_agency_admin(agency_id)
+    or created_by = auth.uid()
+  )
+);
 create policy "members can manage task comments" on public.task_comments for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can manage task comment attachments" on public.task_comment_attachments for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can read task watchers" on public.task_watchers for select using (public.is_agency_member(agency_id));
@@ -1239,10 +1635,15 @@ create policy "recipients can read notifications" on public.notifications for se
 create policy "recipients can update notifications" on public.notifications for update using (recipient_id = auth.uid() and public.is_agency_member(agency_id)) with check (recipient_id = auth.uid() and public.is_agency_member(agency_id));
 create policy "recipients can delete notifications" on public.notifications for delete using (recipient_id = auth.uid() and public.is_agency_member(agency_id));
 create policy "members can manage recurring rules" on public.recurring_task_rules for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
+create policy "members can read recurring task runs" on public.recurring_task_runs for select using (public.is_agency_member(agency_id));
+create policy "members can add recurring task runs" on public.recurring_task_runs for insert with check (public.is_agency_member(agency_id));
+create policy "members can manage task templates" on public.task_templates for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
+create policy "members can manage task template items" on public.task_template_items for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can manage dossiers" on public.dossiers for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can manage client personas" on public.client_personas for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can read activity" on public.activity_logs for select using (public.is_agency_member(agency_id));
 create policy "members can add activity" on public.activity_logs for insert with check (public.is_agency_member(agency_id));
+create policy "members can manage onboarding templates" on public.onboarding_templates for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can manage onboarding links" on public.onboarding_links for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can manage onboarding submissions" on public.onboarding_submissions for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
 create policy "members can manage creative requests" on public.creative_requests for all using (public.is_agency_member(agency_id)) with check (public.is_agency_member(agency_id));
@@ -1265,9 +1666,13 @@ revoke all on table
   public.task_watchers,
   public.notifications,
   public.recurring_task_rules,
+  public.recurring_task_runs,
+  public.task_templates,
+  public.task_template_items,
   public.dossiers,
   public.client_personas,
   public.activity_logs,
+  public.onboarding_templates,
   public.onboarding_links,
   public.onboarding_submissions,
   public.creative_requests,
@@ -1290,9 +1695,13 @@ grant select, insert, update, delete on table
   public.task_watchers,
   public.notifications,
   public.recurring_task_rules,
+  public.recurring_task_runs,
+  public.task_templates,
+  public.task_template_items,
   public.dossiers,
   public.client_personas,
   public.activity_logs,
+  public.onboarding_templates,
   public.onboarding_links,
   public.onboarding_submissions,
   public.creative_requests,
@@ -1300,6 +1709,9 @@ grant select, insert, update, delete on table
   public.external_creators,
   public.creative_assignments
 to authenticated;
+
+revoke update, delete on table public.recurring_task_runs from authenticated;
+grant select, insert on table public.recurring_task_runs to authenticated;
 
 grant select, insert, delete on table public.ai_team_reports to authenticated;
 
@@ -1316,9 +1728,13 @@ grant all privileges on table
   public.task_watchers,
   public.notifications,
   public.recurring_task_rules,
+  public.recurring_task_runs,
+  public.task_templates,
+  public.task_template_items,
   public.dossiers,
   public.client_personas,
   public.activity_logs,
+  public.onboarding_templates,
   public.onboarding_links,
   public.onboarding_submissions,
   public.creative_requests,

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Bot, Building2, Clock3, UserPlus, UsersRound, WandSparkles } from "lucide-react";
+import { Bot, Building2, Clock3, FileText, Layers3, UserPlus, UsersRound, WandSparkles } from "lucide-react";
 import { removeAiSettings, resetAiTaskPrompt, saveAiSettings } from "@/actions/ai";
 import { createExternalCreator } from "@/actions/creative";
+import { deleteTaskTemplate } from "@/actions/task-templates";
 import {
   cancelTeamInvitation,
   inviteTeamMember,
@@ -11,11 +12,13 @@ import {
   updateMemberRole,
 } from "@/actions/team";
 import { EmptyState } from "@/components/empty-state";
+import { OnboardingTemplateManager } from "@/components/onboarding-template-manager";
 import { PageHeader } from "@/components/page-header";
 import { UserTimezoneSettings } from "@/components/user-timezone-settings";
 import { getAgencyAiSettingsForAdmin, getAgencyAiSettingsSummary } from "@/lib/ai/settings";
 import { DEFAULT_TASK_PROMPT } from "@/lib/ai/task-prompt";
 import { requireAgency } from "@/lib/auth";
+import { onboardingTemplateSchemaOrDefault, type OnboardingTemplateSchema } from "@/lib/onboarding";
 import { formatDate, formatLabel } from "@/lib/utils";
 
 export default async function SettingsPage() {
@@ -30,7 +33,14 @@ export default async function SettingsPage() {
       taskPromptStorageReady: false,
       imageModelStorageReady: false,
     }));
-  const [{ data: members }, { data: invitations }, { data: creators }, aiSettings] = await Promise.all([
+  const [
+    { data: members, error: membersError },
+    { data: invitations, error: invitationsError },
+    { data: creators, error: creatorsError },
+    { data: templates, error: templatesError },
+    { data: onboardingTemplates, error: onboardingTemplatesError },
+    aiSettings,
+  ] = await Promise.all([
     context.supabase.from("agency_members").select("*").eq("agency_id", context.agency.id).order("created_at"),
     context.supabase
       .from("team_invitations")
@@ -39,8 +49,21 @@ export default async function SettingsPage() {
       .is("accepted_at", null)
       .order("created_at", { ascending: false }),
     context.supabase.from("external_creators").select("*").eq("agency_id", context.agency.id).order("name"),
+    context.supabase
+      .from("task_templates")
+      .select("id, name, description, created_at, created_from_task_id, created_from_task_list_id")
+      .eq("agency_id", context.agency.id)
+      .order("created_at", { ascending: false }),
+    context.supabase
+      .from("onboarding_templates")
+      .select("id, name, description, schema, is_default, created_at")
+      .eq("agency_id", context.agency.id)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: false }),
     aiSettingsQuery,
   ]);
+  const queryError = membersError || invitationsError || creatorsError || templatesError || onboardingTemplatesError;
+  if (queryError) throw new Error(queryError.message);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   return (
@@ -235,6 +258,66 @@ export default async function SettingsPage() {
           )}
         </section>
       </div>
+      <section className="mt-12">
+        <h2 className="ui-section-title mb-3 text-blue-700"><Layers3 className="size-3.5" />Task templates</h2>
+        <p className="mb-3 max-w-3xl text-xs leading-5 text-zinc-500">
+          Save either a single task tree or a whole task list, then reuse that workflow for new clients with one click from the Tasks tab.
+        </p>
+        {!templates?.length ? (
+          <EmptyState
+            title="No task templates"
+            description="Open any task or task list, save it as a template, and it will appear here for reuse across clients."
+          />
+        ) : (
+          <div className="space-y-2">
+            {templates.map((template) => (
+              <div key={template.id} className="border-y bg-white px-4 py-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{template.name}</p>
+                    {template.description && (
+                      <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">{template.description}</p>
+                    )}
+                    <p className="mt-1 text-[10px] uppercase tracking-[0.06em] text-zinc-400">
+                      {template.created_from_task_list_id ? "List template" : "Task tree template"} · Created {formatDate(template.created_at)}
+                    </p>
+                  </div>
+                  <form action={deleteTaskTemplate}>
+                    <input type="hidden" name="template_id" value={template.id} />
+                    <button className="text-xs font-medium text-red-600">Delete template</button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="mt-12">
+        <h2 className="ui-section-title mb-3 text-blue-700"><FileText className="size-3.5" />Onboarding templates</h2>
+        <p className="mb-3 max-w-3xl text-xs leading-5 text-zinc-500">
+          Keep the standard agency intake, then create as many custom onboarding forms as you need for niches, service lines, or special workflows.
+        </p>
+        <OnboardingTemplateManager
+          templates={((onboardingTemplates ?? []) as Array<{
+            id: string;
+            name: string;
+            description: string | null;
+            schema: unknown;
+            is_default: boolean;
+            created_at: string;
+          }>).map((template) => ({
+            ...template,
+            schema: onboardingTemplateSchemaOrDefault(template.schema),
+          })) as Array<{
+            id: string;
+            name: string;
+            description: string | null;
+            schema: OnboardingTemplateSchema;
+            is_default: boolean;
+            created_at: string;
+          }>}
+        />
+      </section>
       <section className="mt-16 max-w-xl">
         <h2 className="ui-section-title mb-3 text-zinc-400"><Clock3 className="size-3.5" />Personal time</h2>
         <UserTimezoneSettings timezone={context.membership.timezone} autoDetect={context.membership.timezone_auto} />
