@@ -1,5 +1,7 @@
 import { deleteClientPersona, upsertClientPersona } from "@/actions/creative";
+import { ActionForm } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
+import { PersonaCsvImporter } from "@/components/persona-csv-importer";
 import { listToLines } from "@/lib/personas";
 import { formatLabel } from "@/lib/utils";
 
@@ -130,22 +132,25 @@ export function PersonaManager({
 }) {
   return (
     <section className="mt-10 space-y-4">
-      <div className="border-b border-zinc-950 pb-3">
-        <h2 className="ui-section-title">ICPs / personas</h2>
-        <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
-          Keep ICPs lightweight and practical here so AI briefs and image prompts target a real audience instead of guessing from raw client notes.
-        </p>
+      <div className="flex flex-col gap-3 border-b border-zinc-950 pb-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="ui-section-title">ICPs / personas</h2>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
+            Keep ICPs lightweight and practical here so AI briefs and image prompts target a real audience instead of guessing from raw client notes.
+          </p>
+        </div>
+        <PersonaCsvImporter clientId={clientId} />
       </div>
 
       <details className="border-y bg-white" open={!personas.length}>
         <summary className="cursor-pointer px-4 py-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-violet-700">
           Add persona
         </summary>
-        <form action={upsertClientPersona} className="border-t p-4">
+        <ActionForm action={upsertClientPersona} className="border-t p-4">
           <input type="hidden" name="client_id" value={clientId} />
           <PersonaFields />
           <button className="ui-action ui-action-primary mt-5">Save persona</button>
-        </form>
+        </ActionForm>
       </details>
 
       {!personas.length ? (
@@ -164,19 +169,19 @@ export function PersonaManager({
                 </div>
               </summary>
               <div className="border-t p-4">
-                <form action={upsertClientPersona}>
+                <ActionForm action={upsertClientPersona}>
                   <input type="hidden" name="client_id" value={clientId} />
                   <input type="hidden" name="persona_id" value={persona.id} />
                   <PersonaFields persona={persona} />
                   <div className="mt-5 flex flex-wrap items-center gap-3">
                     <button className="ui-action ui-action-primary">Save persona</button>
                   </div>
-                </form>
-                <form action={deleteClientPersona} className="mt-3">
+                </ActionForm>
+                <ActionForm action={deleteClientPersona} className="mt-3">
                   <input type="hidden" name="client_id" value={clientId} />
                   <input type="hidden" name="persona_id" value={persona.id} />
                   <button className="text-xs font-medium text-red-600">Delete persona</button>
-                </form>
+                </ActionForm>
               </div>
             </details>
           ))}

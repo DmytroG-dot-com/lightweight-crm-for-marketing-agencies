@@ -3,6 +3,7 @@
 import { CalendarDays, ChevronLeft, ChevronRight, List, Plus, Repeat2, Rows3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createRecurringRule } from "@/actions/crm";
+import { ActionForm } from "@/components/action-form";
 import { TaskDateRangePicker } from "@/components/task-date-range-picker";
 import type { Member } from "@/components/task-table";
 import { TASK_PRIORITIES } from "@/lib/constants";
@@ -251,7 +252,7 @@ export function RecurringScheduleManager({
           <Plus className="size-3.5" />
           Add recurring task
         </summary>
-        <form action={createRecurringRule} className="grid gap-4 border-t bg-zinc-50/60 p-4 md:grid-cols-2 xl:grid-cols-4">
+        <ActionForm action={createRecurringRule} className="grid gap-4 border-t bg-zinc-50/60 p-4 md:grid-cols-2 xl:grid-cols-4">
           <input type="hidden" name="client_id" value={clientId} />
           <input type="hidden" name="task_list_id" value={recurringListId} />
           <input type="hidden" name="first_start_date" value={dates.start} />
@@ -338,7 +339,7 @@ export function RecurringScheduleManager({
               Draft is shown in the preview
             </p>
           )}
-        </form>
+        </ActionForm>
       </details>
 
       {view === "calendar" && (

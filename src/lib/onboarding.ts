@@ -1,7 +1,5 @@
 import { DOSSIER_SECTIONS } from "@/lib/constants";
 
-type DossierSection = (typeof DOSSIER_SECTIONS)[number];
-
 export const ONBOARDING_QUESTION_TYPES = ["short", "long", "email", "url", "choice", "multi"] as const;
 export type OnboardingQuestionType = (typeof ONBOARDING_QUESTION_TYPES)[number];
 
@@ -395,6 +393,88 @@ export function sanitizeOnboardingDraft(
 
   if (totalLength > 500_000) throw new Error("Onboarding draft is too large.");
   return draft;
+}
+
+export function buildOnboardingDraft(
+  formData: FormData,
+  schema: OnboardingTemplateSchema = DEFAULT_ONBOARDING_TEMPLATE_SCHEMA,
+) {
+  const answers = Object.fromEntries(
+    listOnboardingQuestions(schema).map((question) => [
+      question.key,
+      question.type === "multi"
+        ? formData.getAll(question.key).map(String)
+        : String(formData.get(question.key) ?? ""),
+    ]),
+  );
+
+  return sanitizeOnboardingDraft(answers, schema);
+}
+
+function knowledgeBaseDraftFromSubmission(
+  value: unknown,
+  questions: OnboardingQuestion[],
+) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || questions.length === 0) return {};
+  if (questions.length === 1) return { [questions[0].key]: text };
+
+  const questionsByLabel = new Map<string, OnboardingQuestion[]>();
+  for (const question of questions) {
+    questionsByLabel.set(question.label, [
+      ...(questionsByLabel.get(question.label) ?? []),
+      question,
+    ]);
+  }
+
+  const headings = Array.from(text.matchAll(/^### (.+)\r?\n\r?\n/gm)).flatMap((match) => {
+    const matchingQuestions = questionsByLabel.get(match[1]);
+    const question = matchingQuestions?.shift();
+    return question && match.index !== undefined ? [{ match, question, index: match.index }] : [];
+  });
+
+  if (headings.length === 0) {
+    // Older submissions omitted headings when only one knowledge-base answer was supplied.
+    return { [questions[0].key]: text };
+  }
+
+  return Object.fromEntries(headings.map((heading, index) => {
+    const answerStart = heading.index + heading.match[0].length;
+    const answerEnd = headings[index + 1]?.index ?? text.length;
+    return [heading.question.key, text.slice(answerStart, answerEnd).trim()];
+  }));
+}
+
+export function onboardingDraftFromSubmission(
+  input: unknown,
+  schema: OnboardingTemplateSchema = DEFAULT_ONBOARDING_TEMPLATE_SCHEMA,
+) {
+  if (!isRecord(input)) return sanitizeOnboardingDraft({}, schema);
+
+  const answers: Record<string, unknown> = {};
+  const knowledgeBaseQuestions = listOnboardingQuestions(schema).filter(
+    (question) => question.target === "knowledge_base",
+  );
+  Object.assign(
+    answers,
+    knowledgeBaseDraftFromSubmission(input.knowledge_base, knowledgeBaseQuestions),
+  );
+
+  for (const question of listOnboardingQuestions(schema)) {
+    if (question.target === "knowledge_base") continue;
+
+    if (question.target === "none") {
+      const customFields = isRecord(input.custom_fields) ? input.custom_fields : {};
+      const field = customFields[question.key];
+      answers[question.key] = isRecord(field) ? field.value : undefined;
+      continue;
+    }
+
+    const section = input[question.target];
+    answers[question.key] = isRecord(section) ? section[question.key] : undefined;
+  }
+
+  return sanitizeOnboardingDraft(answers, schema);
 }
 
 function formatKnowledgeBaseEntries(entries: Array<{ label: string; value: OnboardingDraftValue }>) {

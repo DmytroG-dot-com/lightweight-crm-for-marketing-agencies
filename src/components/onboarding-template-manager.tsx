@@ -2,11 +2,12 @@
 
 import { FileText, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import {
   deleteOnboardingTemplate,
   saveOnboardingTemplate,
 } from "@/actions/onboarding-templates";
+import { OnboardingTemplateCsvImporter } from "@/components/onboarding-template-csv-importer";
 import { DOSSIER_LABELS } from "@/lib/constants";
 import {
   DEFAULT_ONBOARDING_TEMPLATE_NAME,
@@ -183,6 +184,7 @@ function TemplateEditor({
   const [open, setOpen] = useState(initiallyOpen);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lockedRef = useRef(false);
 
   const initialState = useMemo(
     () => ({
@@ -231,50 +233,62 @@ function TemplateEditor({
   }
 
   function save() {
+    if (pending || lockedRef.current) return;
+
+    lockedRef.current = true;
     startTransition(async () => {
-      setMessage(null);
-      setError(null);
+      try {
+        setMessage(null);
+        setError(null);
 
-      const formData = new FormData();
-      if (template?.id) formData.set("template_id", template.id);
-      formData.set("name", name);
-      formData.set("description", description);
-      formData.set("schema", JSON.stringify(fromBuilderSchema(schema)));
-      if (isDefault) formData.set("is_default", "on");
+        const formData = new FormData();
+        if (template?.id) formData.set("template_id", template.id);
+        formData.set("name", name);
+        formData.set("description", description);
+        formData.set("schema", JSON.stringify(fromBuilderSchema(schema)));
+        if (isDefault) formData.set("is_default", "on");
 
-      const result = await saveOnboardingTemplate(formData);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
+        const result = await saveOnboardingTemplate(formData);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
 
-      setMessage(result.message);
-      router.refresh();
-      if (newTemplate && !template?.id) {
-        setName("");
-        setDescription("");
-        setIsDefault(false);
-        setSchema(toBuilderSchema(DEFAULT_ONBOARDING_TEMPLATE_SCHEMA));
+        setMessage(result.message);
+        router.refresh();
+        if (newTemplate && !template?.id) {
+          setName("");
+          setDescription("");
+          setIsDefault(false);
+          setSchema(toBuilderSchema(DEFAULT_ONBOARDING_TEMPLATE_SCHEMA));
+        }
+      } finally {
+        lockedRef.current = false;
       }
     });
   }
 
   function remove() {
-    if (!template?.id) return;
+    if (!template?.id || pending || lockedRef.current) return;
 
+    lockedRef.current = true;
     startTransition(async () => {
-      setMessage(null);
-      setError(null);
+      try {
+        setMessage(null);
+        setError(null);
 
-      const formData = new FormData();
-      formData.set("template_id", template.id);
-      const result = await deleteOnboardingTemplate(formData);
-      if (!result.ok) {
-        setError(result.error);
-        return;
+        const formData = new FormData();
+        formData.set("template_id", template.id);
+        const result = await deleteOnboardingTemplate(formData);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+
+        router.refresh();
+      } finally {
+        lockedRef.current = false;
       }
-
-      router.refresh();
     });
   }
 
@@ -600,6 +614,7 @@ export function OnboardingTemplateManager({
         </summary>
         <div className="border-t px-4 py-4">
           <div className="space-y-4">
+            <OnboardingTemplateCsvImporter />
             <TemplateEditor newTemplate />
 
             {!templates.length ? (

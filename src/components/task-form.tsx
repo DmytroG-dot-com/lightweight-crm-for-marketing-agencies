@@ -1,4 +1,5 @@
 import { createTask, updateTask } from "@/actions/crm";
+import { ActionForm } from "@/components/action-form";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 import { formatLabel } from "@/lib/utils";
 
@@ -36,7 +37,7 @@ export function TaskForm({
   const action = defaults ? updateTask : createTask;
   const defaultListId = defaults?.task_list_id ?? preferredListId ?? lists.find((list) => list.kind === "general")?.id ?? lists[0]?.id;
   return (
-    <form action={action} className="grid gap-x-5 gap-y-6 border-y bg-white py-6 lg:grid-cols-4">
+    <ActionForm action={action} className="grid gap-x-5 gap-y-6 border-y bg-white py-6 lg:grid-cols-4">
       <input type="hidden" name="client_id" value={clientId} />
       {defaults && <input type="hidden" name="task_id" value={defaults.id} />}
       <label className="text-sm font-medium lg:col-span-2">
@@ -102,6 +103,6 @@ export function TaskForm({
           {defaults ? "Save task" : "Create task"}
         </button>
       </div>
-    </form>
+    </ActionForm>
   );
 }

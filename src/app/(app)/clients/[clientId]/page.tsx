@@ -7,6 +7,7 @@ import {
   setOnboardingLinkActive,
   updateClient,
 } from "@/actions/crm";
+import { ActionForm } from "@/components/action-form";
 import { ClientTabs } from "@/components/client-tabs";
 import { ClientLifecycleActions } from "@/components/client-lifecycle-actions";
 import { AutoFilterForm } from "@/components/auto-filter-form";
@@ -244,7 +245,7 @@ export default async function ClientDetailPage({
       <ClientTabs clientId={clientId} active={tab} archived={archived} />
 
       {tab === "overview" && (
-        <form action={updateClient} className="grid gap-x-5 gap-y-6 border-y bg-white py-6 md:grid-cols-2 xl:grid-cols-3">
+        <ActionForm action={updateClient} className="grid gap-x-5 gap-y-6 border-y bg-white py-6 md:grid-cols-2 xl:grid-cols-3">
           <input type="hidden" name="client_id" value={clientId} />
           {[
             ["name", "Client name", context.client.name],
@@ -274,7 +275,7 @@ export default async function ClientDetailPage({
               <ClientLifecycleActions clientId={clientId} archived={false} />
             </div>
           )}
-        </form>
+        </ActionForm>
       )}
 
       {tab === "tasks" && (
@@ -360,7 +361,7 @@ export default async function ClientDetailPage({
       {tab === "dossier" && (
         <>
           <DossierExportButton clientId={clientId} />
-          <DossierForm clientId={clientId} dossier={dossier} />
+          <DossierForm key={String(dossier?.updated_at ?? "new")} clientId={clientId} dossier={dossier} />
           <PersonaManager clientId={clientId} personas={personas ?? []} />
         </>
       )}
@@ -374,7 +375,7 @@ export default async function ClientDetailPage({
               Generate a new form whenever client context needs refreshing. Archive old forms to disable their public links while keeping submissions available here.
               </p>
             </div>
-            <form action={generateOnboardingLink} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <ActionForm action={generateOnboardingLink} className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <input type="hidden" name="client_id" value={clientId} />
               <label className="block text-sm font-medium">
                 <span className="mb-1.5 block text-[10px] uppercase tracking-[0.08em] text-zinc-500">Template</span>
@@ -392,7 +393,7 @@ export default async function ClientDetailPage({
                 </select>
               </label>
               <button className="ui-action ui-action-primary w-full sm:w-auto">Generate new onboarding form</button>
-            </form>
+            </ActionForm>
           </div>
           <section>
             <h2 className="ui-section-title mb-3">Forms and public links</h2>
@@ -421,12 +422,12 @@ export default async function ClientDetailPage({
                         </Link>
                         <p className="mt-1 text-[10px] uppercase tracking-[0.06em] text-zinc-400">Created {formatDateTime(link.created_at, context.membership.timezone)}</p>
                       </div>
-                      <form action={setOnboardingLinkActive}>
+                      <ActionForm action={setOnboardingLinkActive}>
                         <input type="hidden" name="client_id" value={clientId} />
                         <input type="hidden" name="link_id" value={link.id} />
                         <input type="hidden" name="active" value={String(!link.active)} />
                         <button className="ui-action">{link.active ? "Archive form" : "Unarchive form"}</button>
-                      </form>
+                      </ActionForm>
                     </div>
                   </div>
                 );
@@ -453,11 +454,11 @@ export default async function ClientDetailPage({
                     </summary>
                     <div className="border-t p-4">
                       <pre className="max-h-96 overflow-auto bg-zinc-950 p-4 text-xs text-zinc-100">{JSON.stringify(submission.submission, null, 2)}</pre>
-                      <form action={copyOnboardingToDossier} className="mt-3">
+                      <ActionForm action={copyOnboardingToDossier} className="mt-3">
                         <input type="hidden" name="client_id" value={clientId} />
                         <input type="hidden" name="submission_id" value={submission.id} />
                         <button className="ui-action">{submission.reviewed_at ? "Merge into dossier again" : "Merge answers into dossier"}</button>
-                      </form>
+                      </ActionForm>
                     </div>
                   </details>
                 );

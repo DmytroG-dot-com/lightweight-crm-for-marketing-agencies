@@ -181,6 +181,41 @@ table {
   color: #fff;
 }
 
+[data-action-form][data-submitting="true"] button[type="submit"],
+[data-action-form][data-submitting="true"] button:not([type]),
+[data-action-form][data-submitting="true"] input[type="submit"] {
+  cursor: progress;
+}
+
+.ui-action[data-pending="true"] {
+  position: relative;
+  padding-right: 1.45rem;
+}
+
+.ui-action[data-pending="true"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateY(-50%);
+  animation: action-pending-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes action-pending-pulse {
+  0%, 100% {
+    opacity: 0.28;
+    transform: translateY(-50%) scale(0.8);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateY(-50%) scale(1.1);
+  }
+}
+
 .ui-action-ghost {
   display: inline-flex;
   min-height: 2rem;

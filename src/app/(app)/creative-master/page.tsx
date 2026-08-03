@@ -3,6 +3,7 @@ import { CalendarDays, ExternalLink, Palette, Plus, Search, X } from "lucide-rea
 import {
   createCreativeRequest,
 } from "@/actions/creative";
+import { ActionForm } from "@/components/action-form";
 import { AutoFilterForm } from "@/components/auto-filter-form";
 import {
   CreativeCreatorSelect,
@@ -256,7 +257,7 @@ export default async function CreativeMasterPage({
           <Plus className="size-3.5" />
           New creative request
         </summary>
-        <form action={createCreativeRequest} className="grid gap-5 border-t py-6 md:grid-cols-2 xl:grid-cols-4">
+        <ActionForm action={createCreativeRequest} className="grid gap-5 border-t py-6 md:grid-cols-2 xl:grid-cols-4">
           <label className="text-sm font-medium">
             Client
             <select name="client_id" required defaultValue={prefillClientId} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm">
@@ -346,7 +347,7 @@ export default async function CreativeMasterPage({
             <textarea name="notes" rows={5} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm" />
           </label>
           <button className="ui-action ui-action-primary w-fit">Create request</button>
-        </form>
+        </ActionForm>
       </details>
 
       <div className="flex flex-col gap-3 border-b border-zinc-200 pb-3 xl:flex-row xl:items-center xl:justify-between">

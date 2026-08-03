@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Archive, Building2, Plus, UsersRound } from "lucide-react";
 import { createClient } from "@/actions/crm";
+import { ActionForm } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
@@ -51,7 +52,7 @@ export default async function ClientsPage({
           <summary className="flex cursor-pointer list-none items-center justify-between py-4 text-[11px] font-semibold uppercase tracking-[0.1em]">
             Add client <Plus className="size-4" />
           </summary>
-          <form action={createClient} className="grid gap-4 border-t p-5 md:grid-cols-2 xl:grid-cols-3">
+          <ActionForm action={createClient} className="grid gap-4 border-t p-5 md:grid-cols-2 xl:grid-cols-3">
             {[
               ["name", "Client name", true],
               ["company_name", "Company name", false],
@@ -75,7 +76,7 @@ export default async function ClientsPage({
               <textarea name="notes" rows={3} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm" />
             </label>
             <button className="ui-action ui-action-primary w-fit">Create client</button>
-          </form>
+          </ActionForm>
         </details>
       )}
       {!clients.length ? (

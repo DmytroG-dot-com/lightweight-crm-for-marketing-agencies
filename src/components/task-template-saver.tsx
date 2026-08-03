@@ -2,7 +2,7 @@
 
 import { Layers3 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { saveTaskTreeAsTemplate } from "@/actions/task-templates";
 
 export function TaskTemplateSaver({
@@ -24,13 +24,17 @@ export function TaskTemplateSaver({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const lockedRef = useRef(false);
 
   function submit() {
+    if (pending || lockedRef.current) return;
+
     if (!name.trim()) {
       setError("Template name is required.");
       return;
     }
 
+    lockedRef.current = true;
     startTransition(async () => {
       setMessage(null);
       setError(null);
@@ -51,6 +55,8 @@ export function TaskTemplateSaver({
         onSaved?.();
       } catch (actionError) {
         setError(actionError instanceof Error ? actionError.message : "Could not save task template.");
+      } finally {
+        lockedRef.current = false;
       }
     });
   }

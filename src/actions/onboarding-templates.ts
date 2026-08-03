@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logActivity } from "@/lib/activity";
 import { requireAgency } from "@/lib/auth";
+import { parseOnboardingTemplateCsv } from "@/lib/onboarding-csv";
 import { sanitizeOnboardingTemplateSchema } from "@/lib/onboarding";
 
 type OnboardingTemplateActionResult =
@@ -12,6 +13,22 @@ type OnboardingTemplateActionResult =
 
 function optionalString(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim() || null;
+}
+
+async function clearOtherDefaultTemplates(
+  agencyId: string,
+  templateIdToKeep: string | null,
+  supabase: Awaited<ReturnType<typeof requireAgency>>["supabase"],
+) {
+  const clearDefaultQuery = supabase
+    .from("onboarding_templates")
+    .update({ is_default: false })
+    .eq("agency_id", agencyId);
+
+  const { error } = templateIdToKeep
+    ? await clearDefaultQuery.neq("id", templateIdToKeep)
+    : await clearDefaultQuery;
+  if (error) throw new Error(error.message);
 }
 
 export async function saveOnboardingTemplate(formData: FormData): Promise<OnboardingTemplateActionResult> {
@@ -35,15 +52,7 @@ export async function saveOnboardingTemplate(formData: FormData): Promise<Onboar
     const schema = sanitizeOnboardingTemplateSchema(parsedSchema);
 
     if (isDefault) {
-      const clearDefaultQuery = context.supabase
-        .from("onboarding_templates")
-        .update({ is_default: false })
-        .eq("agency_id", context.agency.id);
-
-      const { error: clearDefaultError } = templateId
-        ? await clearDefaultQuery.neq("id", templateId)
-        : await clearDefaultQuery;
-      if (clearDefaultError) throw new Error(clearDefaultError.message);
+      await clearOtherDefaultTemplates(context.agency.id, templateId, context.supabase);
     }
 
     if (templateId) {
@@ -109,6 +118,57 @@ export async function saveOnboardingTemplate(formData: FormData): Promise<Onboar
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Could not save onboarding template.",
+    };
+  }
+}
+
+export async function importOnboardingTemplateCsv(formData: FormData): Promise<OnboardingTemplateActionResult> {
+  const context = await requireAgency();
+
+  try {
+    const name = z.string().trim().min(1).max(180).parse(formData.get("name"));
+    const description = optionalString(formData, "description");
+    const csvText = z.string().trim().min(1).parse(formData.get("csv_text"));
+    const isDefault = formData.get("is_default") === "on";
+    const schema = parseOnboardingTemplateCsv(csvText);
+
+    if (isDefault) {
+      await clearOtherDefaultTemplates(context.agency.id, null, context.supabase);
+    }
+
+    const { data: template, error } = await context.supabase
+      .from("onboarding_templates")
+      .insert({
+        agency_id: context.agency.id,
+        name,
+        description,
+        schema,
+        is_default: isDefault,
+        created_by: context.user.id,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+
+    await logActivity(context.supabase, {
+      agencyId: context.agency.id,
+      actorId: context.user.id,
+      action: "onboarding_template.imported",
+      entityType: "onboarding_template",
+      entityId: template.id,
+      metadata: { name, is_default: isDefault, source: "csv" },
+    });
+    revalidatePath("/settings");
+
+    return {
+      ok: true,
+      message: `Imported "${name}".`,
+      templateId: template.id,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not import onboarding template CSV.",
     };
   }
 }

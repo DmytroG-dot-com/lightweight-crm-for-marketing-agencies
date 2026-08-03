@@ -13,6 +13,7 @@ import {
   generateCreativeImages,
   restoreCreativeRequest,
 } from "@/actions/creative";
+import { ActionForm } from "@/components/action-form";
 import { StatusPill } from "@/components/status-pill";
 import { CREATIVE_STATUSES } from "@/lib/constants";
 import { creativeDateTone, formatDateTime, formatLabel } from "@/lib/utils";
@@ -734,21 +735,21 @@ export function CreativeRequestModal({
             {saveState === "error" && saveError ? <span className="ml-2 normal-case tracking-normal text-red-600">{saveError}</span> : null}
           </div>
           {archived ? (
-            <form action={restoreCreativeRequest}>
+            <ActionForm action={restoreCreativeRequest}>
               <input type="hidden" name="request_id" value={request.id} />
               <button className="ui-action-ghost flex items-center gap-1.5 text-emerald-700">
                 <Undo2 className="size-3.5" />
                 Restore request
               </button>
-            </form>
+            </ActionForm>
           ) : (
-            <form action={archiveCreativeRequest}>
+            <ActionForm action={archiveCreativeRequest}>
               <input type="hidden" name="request_id" value={request.id} />
               <button className="ui-action-ghost ui-action-ghost-destructive flex items-center gap-1.5 text-zinc-500">
                 <Archive className="size-3.5" />
                 Archive request
               </button>
-            </form>
+            </ActionForm>
           )}
         </div>
       </div>

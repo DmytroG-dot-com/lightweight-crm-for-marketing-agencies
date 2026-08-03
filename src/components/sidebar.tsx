@@ -4,6 +4,7 @@ import { BarChart3, Bell, BriefcaseBusiness, FolderKanban, Menu, Palette, Settin
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ActionForm } from "@/components/action-form";
 import { INBOX_UNREAD_REFRESH_EVENT } from "@/lib/inbox-events";
 import { createClient } from "@/lib/supabase/client";
 
@@ -167,11 +168,22 @@ export function Sidebar({
           Settings
         </Link>
       </nav>
-      <div className="mt-auto border-t border-zinc-950 pt-4">
-        <p className="truncate text-xs uppercase tracking-[0.04em] text-zinc-700">{userLabel}</p>
-        <form action={signOutAction}>
-          <button className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-400 hover:text-zinc-950">Sign out</button>
-        </form>
+      <div className="mt-auto pt-16">
+        <div className="pb-8">
+          <Link
+            href="/sop"
+            onClick={() => setOpen(false)}
+            className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-300 opacity-35 transition hover:text-zinc-500 hover:opacity-100"
+          >
+            SOP
+          </Link>
+        </div>
+        <div className="border-t border-zinc-950 pt-4">
+          <p className="truncate text-xs uppercase tracking-[0.04em] text-zinc-700">{userLabel}</p>
+          <ActionForm action={signOutAction}>
+            <button className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-400 hover:text-zinc-950">Sign out</button>
+          </ActionForm>
+        </div>
       </div>
     </aside>
   );

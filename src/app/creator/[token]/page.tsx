@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { updateCreatorAssignment } from "@/actions/public";
 import { ChevronDown } from "lucide-react";
+import { ActionForm } from "@/components/action-form";
 import { AutoFilterForm } from "@/components/auto-filter-form";
 import { CreatorPortalLiveRefresh } from "@/components/creator-portal-live-refresh";
 import { StatusPill } from "@/components/status-pill";
@@ -200,7 +201,7 @@ export default async function CreatorPortalPage({
                     </div>
                   )}
                 </div>
-                <form action={updateCreatorAssignment} className="mt-4 grid gap-4">
+                <ActionForm action={updateCreatorAssignment} className="mt-4 grid gap-4">
                   <input type="hidden" name="token" value={token} />
                   <input type="hidden" name="request_id" value={request.id} />
                   <label className="text-sm font-medium">
@@ -209,7 +210,7 @@ export default async function CreatorPortalPage({
                   </label>
                   <label className="text-sm font-medium">Completed Drive folder URL<input name="completed_drive_folder_url" type="url" defaultValue={request.completed_drive_folder_url ?? ""} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm" /></label>
                   <button className="w-fit rounded-lg bg-zinc-950 px-4 py-2 text-sm font-medium text-white">Post update</button>
-                </form>
+                </ActionForm>
               </div>
             </details>
           );

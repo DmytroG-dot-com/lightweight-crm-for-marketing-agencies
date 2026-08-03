@@ -2,7 +2,7 @@
 
 import { Layers3 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { applyTaskTemplate } from "@/actions/task-templates";
 
 type TaskTemplateOption = {
@@ -27,6 +27,7 @@ export function TaskTemplateApplier({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const lockedRef = useRef(false);
 
   if (!templates.length) {
     return (
@@ -39,7 +40,9 @@ export function TaskTemplateApplier({
   const activeTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
 
   function submit() {
-    if (!selectedTemplateId) return;
+    if (!selectedTemplateId || pending || lockedRef.current) return;
+
+    lockedRef.current = true;
 
     startTransition(async () => {
       setMessage(null);
@@ -59,6 +62,8 @@ export function TaskTemplateApplier({
         router.refresh();
       } catch (actionError) {
         setError(actionError instanceof Error ? actionError.message : "Could not apply task template.");
+      } finally {
+        lockedRef.current = false;
       }
     });
   }

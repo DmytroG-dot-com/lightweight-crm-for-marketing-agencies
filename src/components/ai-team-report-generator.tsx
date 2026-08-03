@@ -2,7 +2,7 @@
 
 import { Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { generateAiTeamReport } from "@/actions/team-reports";
 
 export function AiTeamReportGenerator() {
@@ -11,8 +11,12 @@ export function AiTeamReportGenerator() {
   const [focus, setFocus] = useState("");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+  const lockedRef = useRef(false);
 
   function generate() {
+    if (pending || lockedRef.current) return;
+
+    lockedRef.current = true;
     setError("");
     startTransition(async () => {
       try {
@@ -21,6 +25,8 @@ export function AiTeamReportGenerator() {
         router.refresh();
       } catch (actionError) {
         setError(actionError instanceof Error ? actionError.message : "Could not generate report.");
+      } finally {
+        lockedRef.current = false;
       }
     });
   }

@@ -80,21 +80,20 @@ export function OnboardingForm({
   companyName,
   serverDraft,
   schema,
+  previouslySubmitted,
 }: {
   token: string;
   companyName: string;
   serverDraft: OnboardingDraft;
   schema: OnboardingTemplateSchema;
+  previouslySubmitted: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const schemaRef = useRef(schema);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
   const queuedDraftRef = useRef<OnboardingDraft | null>(null);
   const [status, setStatus] = useState<DraftStatus>(hasAnswers(serverDraft) ? "restored" : "ready");
   const storageKey = `onboarding-draft:${token}`;
-
-  schemaRef.current = schema;
 
   const flushServerDraft = useCallback(async function flushDraft() {
     if (savingRef.current || !queuedDraftRef.current) return;
@@ -151,7 +150,7 @@ export function OnboardingForm({
       ref={formRef}
       action={submitOnboarding}
       className="space-y-12"
-      onInput={(event) => queueDraft(serializeForm(event.currentTarget, schemaRef.current))}
+      onInput={(event) => queueDraft(serializeForm(event.currentTarget, schema))}
       onSubmit={() => {
         setStatus("submitting");
         clearLocalDraft(storageKey);
@@ -189,7 +188,7 @@ export function OnboardingForm({
           {status === "submitting" && "Submitting..."}
         </p>
         <button disabled={status === "submitting"} className="ui-action ui-action-primary disabled:opacity-50">
-          Submit onboarding
+          {previouslySubmitted ? "Submit again" : "Submit onboarding"}
         </button>
       </div>
     </form>

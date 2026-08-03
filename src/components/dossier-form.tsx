@@ -1,4 +1,5 @@
 import { saveDossier } from "@/actions/crm";
+import { ActionForm } from "@/components/action-form";
 import { DOSSIER_LABELS, DOSSIER_SECTIONS } from "@/lib/constants";
 import {
   DOSSIER_SECTION_QUESTIONS,
@@ -26,7 +27,7 @@ export function DossierForm({
   dossier: Record<string, unknown> | null;
 }) {
   return (
-    <form action={saveDossier} className="space-y-0">
+    <ActionForm action={saveDossier} className="space-y-0">
       <input type="hidden" name="client_id" value={clientId} />
       {DOSSIER_SECTIONS.map((section, index) => {
         const questions = DOSSIER_SECTION_QUESTIONS[section];
@@ -154,6 +155,6 @@ export function DossierForm({
         </label>
       </div>
       <button className="ui-action ui-action-primary mt-6">Save dossier</button>
-    </form>
+    </ActionForm>
   );
 }

@@ -1,5 +1,6 @@
 import { signOut } from "@/actions/auth";
 import { finishAccountSetup } from "@/actions/team";
+import { ActionForm } from "@/components/action-form";
 import { requireUser } from "@/lib/auth";
 
 export default async function NoAgencyPage() {
@@ -12,8 +13,8 @@ export default async function NoAgencyPage() {
           {user.email} is authenticated, but agency setup did not finish. Retry it below.
         </p>
         <div className="mt-5 flex justify-center gap-2">
-          <form action={finishAccountSetup}><button className="ui-action ui-action-primary">Finish setup</button></form>
-          <form action={signOut}><button className="ui-action">Sign out</button></form>
+          <ActionForm action={finishAccountSetup}><button className="ui-action ui-action-primary">Finish setup</button></ActionForm>
+          <ActionForm action={signOut}><button className="ui-action">Sign out</button></ActionForm>
         </div>
       </div>
     </main>

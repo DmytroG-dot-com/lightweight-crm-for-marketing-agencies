@@ -11,6 +11,7 @@ import {
   updateMemberName,
   updateMemberRole,
 } from "@/actions/team";
+import { ActionForm } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
 import { OnboardingTemplateManager } from "@/components/onboarding-template-manager";
 import { PageHeader } from "@/components/page-header";
@@ -81,7 +82,7 @@ export default async function SettingsPage() {
         </div>
         {canManageTeam ? (
           <div className="border-y bg-white py-5">
-            <form action={saveAiSettings} className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
+            <ActionForm action={saveAiSettings} className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
               <label className="text-sm font-medium">
                 OpenAI API key
                 <input
@@ -132,20 +133,20 @@ export default async function SettingsPage() {
                   </span>
                 )}
               </label>
-            </form>
+            </ActionForm>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
               <p className="text-xs text-zinc-500">
                 {aiSettings.usesServerKey ? "Using the server OPENAI_API_KEY fallback." : "Stored keys are encrypted and never returned to the browser."}
               </p>
               <div className="flex flex-wrap items-center gap-4">
                 {aiSettings.taskPromptCustomized && (
-                  <form action={resetAiTaskPrompt}>
+                  <ActionForm action={resetAiTaskPrompt}>
                     <button className="text-xs font-medium text-zinc-600">Reset task prompt to default</button>
-                  </form>
+                  </ActionForm>
                 )}
-                <form action={removeAiSettings}>
+                <ActionForm action={removeAiSettings}>
                   <button className="text-xs font-medium text-red-600">Disable and remove saved AI key</button>
-                </form>
+                </ActionForm>
               </div>
             </div>
           </div>
@@ -156,7 +157,7 @@ export default async function SettingsPage() {
       <div className="mb-6 grid gap-6 xl:grid-cols-2">
         <section>
           <h2 className="ui-section-title mb-3 text-blue-700"><Building2 className="size-3.5" />Agency</h2>
-          <form action={updateAgencyName} className="border-y bg-white py-5">
+          <ActionForm action={updateAgencyName} className="border-y bg-white py-5">
             <label className="text-sm font-medium">
               Agency name
               <input
@@ -168,16 +169,16 @@ export default async function SettingsPage() {
               />
             </label>
             {canManageTeam && <button className="ui-action mt-4">Save name</button>}
-          </form>
+          </ActionForm>
         </section>
         <section>
           <h2 className="ui-section-title mb-3 text-blue-700"><UserPlus className="size-3.5" />Invite teammate</h2>
           {canManageTeam ? (
-            <form action={inviteTeamMember} className="grid gap-3 border-y bg-white py-5 sm:grid-cols-[1fr_140px_auto] sm:items-end">
+            <ActionForm action={inviteTeamMember} className="grid gap-3 border-y bg-white py-5 sm:grid-cols-[1fr_140px_auto] sm:items-end">
               <label className="text-sm font-medium">Email<input name="email" type="email" required className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm" placeholder="teammate@agency.com" /></label>
               <label className="text-sm font-medium">Role<select name="role" className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm"><option value="member">Member</option><option value="admin">Admin</option></select></label>
               <button className="ui-action ui-action-primary">Create invite</button>
-            </form>
+            </ActionForm>
           ) : (
             <p className="rounded-xl border bg-white p-4 text-sm text-zinc-500">Only owners and admins can invite teammates.</p>
           )}
@@ -190,7 +191,7 @@ export default async function SettingsPage() {
             {members?.map((member) => (
               <div key={member.id} className="flex flex-col items-start justify-between gap-3 border-b px-4 py-3 last:border-0 sm:flex-row sm:items-center sm:gap-4">
                 <div className="min-w-0 flex-1">
-                  <form action={updateMemberName} className="flex max-w-sm flex-wrap items-center gap-2 sm:flex-nowrap">
+                  <ActionForm action={updateMemberName} className="flex max-w-sm flex-wrap items-center gap-2 sm:flex-nowrap">
                     <input type="hidden" name="membership_id" value={member.id} />
                     <input
                       name="display_name"
@@ -200,12 +201,12 @@ export default async function SettingsPage() {
                       className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-sm font-medium disabled:bg-zinc-50"
                     />
                     {(canManageTeam || member.user_id === context.user.id) && <button className="rounded-lg border px-2 py-1.5 text-xs font-medium">Save</button>}
-                  </form>
+                  </ActionForm>
                   <p className="mt-1 text-xs text-zinc-500">{member.email}</p>
                 </div>
                 <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
                   {context.membership.role === "owner" && member.role !== "owner" ? (
-                    <form action={updateMemberRole} className="flex items-center gap-2">
+                    <ActionForm action={updateMemberRole} className="flex items-center gap-2">
                       <input type="hidden" name="membership_id" value={member.id} />
                       <select
                         name="role"
@@ -216,15 +217,15 @@ export default async function SettingsPage() {
                         <option value="admin">Admin</option>
                       </select>
                       <button className="rounded-lg border px-2 py-1.5 text-xs font-medium">Save</button>
-                    </form>
+                    </ActionForm>
                   ) : (
                     <span className="text-xs font-medium text-zinc-500">{formatLabel(member.role)}</span>
                   )}
                   {canManageTeam && member.role !== "owner" && member.user_id !== context.user.id && (
-                    <form action={removeTeamMember}>
+                    <ActionForm action={removeTeamMember}>
                       <input type="hidden" name="membership_id" value={member.id} />
                       <button className="text-xs font-medium text-red-600">Remove</button>
-                    </form>
+                    </ActionForm>
                   )}
                 </div>
               </div>
@@ -237,7 +238,7 @@ export default async function SettingsPage() {
                 {invitations.map((invitation) => (
                   <div key={invitation.id} className="flex flex-col items-start justify-between gap-3 rounded-xl border bg-white px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
                     <div className="min-w-0 flex-1"><p className="text-sm font-medium">{invitation.email}</p><p className="text-xs text-zinc-500">{formatLabel(invitation.role)} · expires {formatDate(invitation.expires_at)}</p><Link href={`/invite/${invitation.token}`} target="_blank" className="mt-1 block break-all text-xs underline">{appUrl}/invite/{invitation.token}</Link></div>
-                    {canManageTeam && <form action={cancelTeamInvitation}><input type="hidden" name="invitation_id" value={invitation.id} /><button className="text-xs font-medium text-red-600">Cancel</button></form>}
+                    {canManageTeam && <ActionForm action={cancelTeamInvitation}><input type="hidden" name="invitation_id" value={invitation.id} /><button className="text-xs font-medium text-red-600">Cancel</button></ActionForm>}
                   </div>
                 ))}
               </div>
@@ -246,11 +247,11 @@ export default async function SettingsPage() {
         </section>
         <section>
           <h2 className="ui-section-title mb-3 text-violet-700"><WandSparkles className="size-3.5" />External creators</h2>
-          <form action={createExternalCreator} className="mb-3 grid gap-3 border-y bg-white py-5 sm:grid-cols-2">
+          <ActionForm action={createExternalCreator} className="mb-3 grid gap-3 border-y bg-white py-5 sm:grid-cols-2">
             <label className="text-sm font-medium">Name<input name="name" required className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm" /></label>
             <label className="text-sm font-medium">Email<input name="email" type="email" required className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm" /></label>
             <button className="ui-action ui-action-primary w-fit">Add creator</button>
-          </form>
+          </ActionForm>
           {!creators?.length ? <EmptyState title="No external creators" description="Add a creator to assign creative requests." /> : (
             <div className="space-y-2">
               {creators.map((creator) => <div key={creator.id} className="rounded-xl border bg-white p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="text-sm font-medium">{creator.name}</p><p className="text-xs text-zinc-500">{creator.email}</p></div><span className="text-xs text-zinc-500">{creator.active ? "Active" : "Inactive"}</span></div><Link href={`/creator/${creator.portal_token}`} target="_blank" className="mt-2 block break-all text-xs text-zinc-600 underline">{appUrl}/creator/{creator.portal_token}</Link></div>)}
@@ -282,10 +283,10 @@ export default async function SettingsPage() {
                       {template.created_from_task_list_id ? "List template" : "Task tree template"} · Created {formatDate(template.created_at)}
                     </p>
                   </div>
-                  <form action={deleteTaskTemplate}>
+                  <ActionForm action={deleteTaskTemplate}>
                     <input type="hidden" name="template_id" value={template.id} />
                     <button className="text-xs font-medium text-red-600">Delete template</button>
-                  </form>
+                  </ActionForm>
                 </div>
               </div>
             ))}

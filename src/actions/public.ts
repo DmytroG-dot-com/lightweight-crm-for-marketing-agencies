@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logActivity } from "@/lib/activity";
 import { CREATIVE_STATUSES } from "@/lib/constants";
 import {
+  buildOnboardingDraft,
   buildOnboardingSubmission,
   onboardingTemplateSchemaOrDefault,
   sanitizeOnboardingDraft,
@@ -41,10 +42,10 @@ export async function submitOnboarding(formData: FormData) {
     throw new Error("This onboarding link is invalid or expired.");
   }
 
-  const submission = buildOnboardingSubmission(
-    formData,
-    onboardingTemplateSchemaOrDefault(link.template_schema),
-  );
+  const schema = onboardingTemplateSchemaOrDefault(link.template_schema);
+  const submission = buildOnboardingSubmission(formData, schema);
+  const submittedDraft = buildOnboardingDraft(formData, schema);
+  const submittedAt = new Date().toISOString();
   const { data, error } = await admin
     .from("onboarding_submissions")
     .upsert(
@@ -53,7 +54,9 @@ export async function submitOnboarding(formData: FormData) {
         client_id: link.client_id,
         onboarding_link_id: link.id,
         submission,
-        submitted_at: new Date().toISOString(),
+        submitted_at: submittedAt,
+        reviewed_at: null,
+        reviewed_by: null,
       },
       { onConflict: "onboarding_link_id" },
     )
@@ -69,8 +72,10 @@ export async function submitOnboarding(formData: FormData) {
   });
   await admin
     .from("onboarding_links")
-    .update({ draft: {}, draft_updated_at: null })
+    .update({ draft: submittedDraft, draft_updated_at: submittedAt })
     .eq("id", link.id);
+  revalidatePath(`/clients/${link.client_id}`);
+  revalidatePath(`/onboarding/${token}`);
   redirect(`/onboarding/${token}?submitted=1`);
 }
 

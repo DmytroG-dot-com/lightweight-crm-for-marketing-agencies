@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCheck } from "lucide-react";
 import { markAllNotificationsRead } from "@/actions/inbox";
+import { ActionForm } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
 import {
   InboxNotificationBoard,
@@ -81,9 +82,9 @@ export default async function InboxPage({
         title="Inbox"
         description="Task comments, mentions, and status updates that need your attention."
         actions={activeTab === "inbox" && unread.length > 0 ? (
-          <form action={markAllNotificationsRead}>
+          <ActionForm action={markAllNotificationsRead}>
             <button className="ui-action flex items-center gap-2"><CheckCheck className="size-3.5" />Mark all read</button>
-          </form>
+          </ActionForm>
         ) : undefined}
       />
       <nav className="mb-10 flex gap-6 border-b border-zinc-300" aria-label="Inbox view">

@@ -1,7 +1,9 @@
 import { OnboardingForm } from "@/components/onboarding-form";
 import {
   DEFAULT_ONBOARDING_TEMPLATE_NAME,
+  onboardingDraftFromSubmission,
   onboardingTemplateSchemaOrDefault,
+  sanitizeOnboardingDraft,
   type OnboardingDraft,
 } from "@/lib/onboarding";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -18,7 +20,7 @@ export default async function OnboardingPage({
   const admin = createAdminClient();
   const { data: link } = await admin
     .from("onboarding_links")
-    .select("id, active, expires_at, draft, template_name, template_schema, clients(name)")
+    .select("id, active, expires_at, draft, draft_updated_at, template_name, template_schema, clients(name)")
     .eq("token", token)
     .eq("active", true)
     .maybeSingle();
@@ -27,11 +29,18 @@ export default async function OnboardingPage({
   if (invalid) {
     return <PublicMessage title="Link unavailable" description="This onboarding link is invalid or has expired." />;
   }
-  if (submitted) {
-    return <PublicMessage title="Thank you" description="Your onboarding information has been submitted to the agency." />;
-  }
   const client = link.clients as unknown as { name: string } | null;
   const schema = onboardingTemplateSchemaOrDefault(link.template_schema);
+  const { data: submission } = await admin
+    .from("onboarding_submissions")
+    .select("submission, submitted_at")
+    .eq("onboarding_link_id", link.id)
+    .maybeSingle();
+  const serverDraft = link.draft_updated_at
+    ? sanitizeOnboardingDraft(link.draft ?? {}, schema)
+    : submission
+      ? onboardingDraftFromSubmission(submission.submission, schema)
+      : (link.draft ?? {}) as OnboardingDraft;
   const templateName = typeof link.template_name === "string" && link.template_name.trim()
     ? link.template_name
     : DEFAULT_ONBOARDING_TEMPLATE_NAME;
@@ -48,11 +57,22 @@ export default async function OnboardingPage({
           Template: {templateName}
         </p>
       </div>
+      {submission ? (
+        <div className="mb-10 border border-emerald-300 bg-emerald-50 px-4 py-4 text-emerald-950" role="status">
+          <p className="text-sm font-semibold">
+            {submitted ? "Onboarding submitted successfully" : "This onboarding form has already been submitted"}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-emerald-800">
+            Your answers are still filled in below. You can update anything that changed and submit the form again.
+          </p>
+        </div>
+      ) : null}
       <OnboardingForm
         token={token}
         companyName={client?.name ?? ""}
-        serverDraft={(link.draft ?? {}) as OnboardingDraft}
+        serverDraft={serverDraft}
         schema={schema}
+        previouslySubmitted={Boolean(submission)}
       />
     </main>
   );

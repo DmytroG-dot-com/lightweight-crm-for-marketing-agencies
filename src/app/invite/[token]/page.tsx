@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { sendInviteMagicLink } from "@/actions/auth";
+import { ActionForm } from "@/components/action-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatLabel } from "@/lib/utils";
 
@@ -37,10 +38,10 @@ export default async function TeamInvitePage({
       </p>
       {query.sent && <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Check your inbox for the secure sign-in link.</p>}
       {query.error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{query.error}</p>}
-      <form action={sendInviteMagicLink} className="mt-5">
+      <ActionForm action={sendInviteMagicLink} className="mt-5">
         <input type="hidden" name="token" value={token} />
         <button className="ui-action ui-action-primary w-full">Email me a secure sign-in link</button>
-      </form>
+      </ActionForm>
     </InviteCard>
   );
 }
